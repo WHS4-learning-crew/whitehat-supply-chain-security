@@ -1,0 +1,84 @@
+name: IaC Security Scan
+
+# 코드가 push되거나 PR이 생성될 때 workflow 실행
+on:
+  push:
+  pull_request:
+
+# GitHub Actions에서 사용하는 GITHUB_TOKEN 권한 최소화
+permissions:
+  contents: read
+
+jobs:
+  iac-scan:
+    # IaC / 설정 파일 보안 검증을 하나의 Job으로 묶음
+    runs-on: ubuntu-latest
+
+    steps:
+      # ------------------------------------------------------
+      # 0. Repository Checkout
+      # ------------------------------------------------------
+      # Checkov / tfsec가 실제 파일을 검사할 수 있도록
+      # 현재 저장소의 코드를 GitHub Actions Runner로 가져옴
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # ------------------------------------------------------
+      # Checkov 설치
+      # ------------------------------------------------------
+      # 아래 Dockerfile / Kubernetes / GitHub Actions 검사에서 공통 사용
+      - name: Install Checkov
+        run: pip install checkov
+
+      # ------------------------------------------------------
+      # 1. Dockerfile 보안 설정 검사
+      # ------------------------------------------------------
+      # Checkov 기본 정책을 사용하여 Dockerfile 검사
+      # 정책 위반(FAIL)이 발생하면 Job 실패
+      - name: Checkov - Dockerfile
+        run: |
+          checkov -d . \
+            --framework dockerfile \
+            --compact \
+            --quiet
+
+      # ------------------------------------------------------
+      # 2. Kubernetes Manifest 보안 설정 검사
+      # ------------------------------------------------------
+      # Deployment, Pod 등 Kubernetes Manifest 검사
+      # root 실행, privileged 설정 등 배포 전 보안 문제 확인
+      # 정책 위반(FAIL)이 발생하면 Job 실패
+      - name: Checkov - Kubernetes
+        run: |
+          checkov -d . \
+            --framework kubernetes \
+            --compact \
+            --quiet
+
+      # ------------------------------------------------------
+      # 3. GitHub Actions Workflow 보안 설정 검사
+      # ------------------------------------------------------
+      # .github/workflows/*.yml 등의 Workflow 검사
+      # 과도한 권한 등 CI/CD 설정의 보안 문제 확인
+      # 정책 위반(FAIL)이 발생하면 Job 실패
+      - name: Checkov - GitHub Actions
+        run: |
+          checkov -d . \
+            --framework github_actions \
+            --compact \
+            --quiet
+
+      # ------------------------------------------------------
+      # 4. Terraform 코드 tfsec 검사
+      # ------------------------------------------------------
+      # PM이 작성한 infra-rbac/ Terraform 코드만 검사
+      #
+      # 기존 EKS / VPC / NodeGroup은 eksctl(CloudFormation) 기반이므로
+      # 이번 Terraform IaC Scan 범위에서는 제외
+      #
+      # HIGH 이상(HIGH / CRITICAL)이 발견되면 Job 실패
+      - name: tfsec - Terraform
+        uses: aquasecurity/tfsec-action@v1.0.3
+        with:
+          working_directory: infra-rbac/
+          additional_args: --minimum-severity HIGH
