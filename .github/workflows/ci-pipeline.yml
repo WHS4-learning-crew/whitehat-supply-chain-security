@@ -153,6 +153,7 @@ jobs:
     needs: trivy-scan
     outputs:
       image_uri: ${{ steps.push.outputs.image_uri }}
+      image_digest_uri: ${{ steps.push.outputs.image_digest_uri }}
 
     steps:
       - name: Download image artifact
@@ -164,7 +165,6 @@ jobs:
       - name: Load image
         run: docker load -i /tmp/whitehat-demo.tar
 
-      # TODO: OIDC Role ARN, ECR 저장소 이름, 리전 확정되면 값 채우기
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -180,8 +180,11 @@ jobs:
         run: |
           IMAGE_URI="${{ steps.ecr-login.outputs.registry }}/whs4-demo-app:${{ github.sha }}"
           docker tag whitehat-demo:latest "$IMAGE_URI"
-          docker push "$IMAGE_URI"
+          # push 결과에서 digest를 뽑아서, 이후 cosign 서명은 tag가 아니라 digest로 고정한다
+          DIGEST=$(docker push "$IMAGE_URI" | grep -oP 'digest: \Ksha256:[a-f0-9]+')
+          IMAGE_DIGEST_URI="${{ steps.ecr-login.outputs.registry }}/whs4-demo-app@${DIGEST}"
           echo "image_uri=$IMAGE_URI" >> "$GITHUB_OUTPUT"
+          echo "image_digest_uri=$IMAGE_DIGEST_URI" >> "$GITHUB_OUTPUT"
 
   cosign-sign:
     name: Cosign Keyless Sign
@@ -192,12 +195,21 @@ jobs:
       - name: Install Cosign
         uses: sigstore/cosign-installer@v3
 
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::984675940604:role/GitHubActionsECRRole
+          aws-region: ap-northeast-2
+
+      - name: Login to Amazon ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
       - name: Sign image
-        run: cosign sign --yes ${{ needs.ecr-push.outputs.image_uri }}
+        run: cosign sign --yes ${{ needs.ecr-push.outputs.image_digest_uri }}
         env:
           COSIGN_EXPERIMENTAL: 1
 
       # 참고: certificate-identity / certificate-oidc-issuer 값은 이 sign 단계가 아니라
-      # 박성현(Kyverno) 검증 정책 쪽에 설정하는 값입니다.
+      # Kyverno 검증 정책 쪽에 설정하는 값입니다.
       # 계산값(참고용): identity=https://github.com/WHS4-learning-crew/whitehat-supply-chain-security/.github/workflows/ci-pipeline.yml@refs/heads/feat/ci-pipeline
       #                issuer=https://token.actions.githubusercontent.com
