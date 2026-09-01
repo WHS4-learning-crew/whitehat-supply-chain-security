@@ -197,5 +197,7 @@ jobs:
         env:
           COSIGN_EXPERIMENTAL: 1
 
-      # TODO: 주은빈에게 certificate-identity / certificate-oidc-issuer 값 확인 후
-      #       박성현(Kyverno) 검증 조건과 일치하는지 재확인
+      # 참고: certificate-identity / certificate-oidc-issuer 값은 이 sign 단계가 아니라
+      # 박성현(Kyverno) 검증 정책 쪽에 설정하는 값입니다.
+      # 계산값(참고용): identity=https://github.com/WHS4-learning-crew/whitehat-supply-chain-security/.github/workflows/ci-pipeline.yml@refs/heads/feat/ci-pipeline
+      #                issuer=https://token.actions.githubusercontent.com
