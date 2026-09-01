@@ -10,6 +10,7 @@ on:
 
 permissions:
   contents: read
+  id-token: write   # OIDC 인증용 (ECR push, Cosign keyless 서명에 필요)
 
 jobs:
   gitleaks-scan:
@@ -31,7 +32,6 @@ jobs:
 
       - name: Run Gitleaks
         run: gitleaks detect --source . -v
-
 
   iac-scan:
     name: Checkov + tfsec
@@ -72,8 +72,6 @@ jobs:
           working_directory: infra-rbac/
           additional_args: --minimum-severity HIGH
 
-
-  # 3. SBOM 생성
   sbom-diff:
     name: Generate SBOM
     runs-on: ubuntu-latest
@@ -96,8 +94,6 @@ jobs:
           test -s sbom-current.json
           echo "SBOM generated successfully"
 
-
-    # 4. Docker Image Build
   build:
     name: Build Docker Image
     runs-on: ubuntu-latest
@@ -116,26 +112,31 @@ jobs:
           context: ./app
           file: ./app/Dockerfile
           push: false
+          load: true
           tags: whitehat-demo:latest
+          outputs: type=docker,dest=/tmp/whitehat-demo.tar
 
-    # 5. Trivy 이미지 취약점 검사
+      - name: Upload image artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: docker-image
+          path: /tmp/whitehat-demo.tar
+          retention-days: 1
+
   trivy-scan:
     name: Trivy Image Scan
     runs-on: ubuntu-latest
     needs: build
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Build Docker image
-        uses: docker/build-push-action@v6
+      - name: Download image artifact
+        uses: actions/download-artifact@v4
         with:
-          context: ./app
-          file: ./app/Dockerfile
-          push: false
-          load: true
-          tags: whitehat-demo:latest
+          name: docker-image
+          path: /tmp
+
+      - name: Load image
+        run: docker load -i /tmp/whitehat-demo.tar
 
       - name: Trivy scan
         uses: aquasecurity/trivy-action@master
@@ -145,3 +146,56 @@ jobs:
           exit-code: '1'
           severity: 'CRITICAL'
           ignore-unfixed: true
+
+  ecr-push:
+    name: Push Image to ECR
+    runs-on: ubuntu-latest
+    needs: trivy-scan
+    outputs:
+      image_uri: ${{ steps.push.outputs.image_uri }}
+
+    steps:
+      - name: Download image artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: docker-image
+          path: /tmp
+
+      - name: Load image
+        run: docker load -i /tmp/whitehat-demo.tar
+
+      # TODO: OIDC Role ARN, ECR 저장소 이름, 리전 확정되면 값 채우기
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::984675940604:role/GitHubActionsECRRole
+          aws-region: ap-northeast-2
+
+      - name: Login to Amazon ECR
+        id: ecr-login
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Tag and push image
+        id: push
+        run: |
+          IMAGE_URI="${{ steps.ecr-login.outputs.registry }}/whs4-demo-app:${{ github.sha }}"
+          docker tag whitehat-demo:latest "$IMAGE_URI"
+          docker push "$IMAGE_URI"
+          echo "image_uri=$IMAGE_URI" >> "$GITHUB_OUTPUT"
+
+  cosign-sign:
+    name: Cosign Keyless Sign
+    runs-on: ubuntu-latest
+    needs: ecr-push
+
+    steps:
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@v3
+
+      - name: Sign image
+        run: cosign sign --yes ${{ needs.ecr-push.outputs.image_uri }}
+        env:
+          COSIGN_EXPERIMENTAL: 1
+
+      # TODO: 주은빈에게 certificate-identity / certificate-oidc-issuer 값 확인 후
+      #       박성현(Kyverno) 검증 조건과 일치하는지 재확인
