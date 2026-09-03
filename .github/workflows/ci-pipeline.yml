@@ -205,7 +205,7 @@ jobs:
         uses: aws-actions/amazon-ecr-login@v2
 
       - name: Sign image
-        run: cosign sign --yes ${{ needs.ecr-push.outputs.image_digest_uri }}
+        run: cosign sign --yes ${{ needs.ecr-push.outputs.image_digest_uri }}bad
         env:
           COSIGN_EXPERIMENTAL: 1
 
