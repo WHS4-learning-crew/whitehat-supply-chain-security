@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - feat/ci-pipeline
+      - test/cosign-fail
   pull_request:
     branches:
       - main
