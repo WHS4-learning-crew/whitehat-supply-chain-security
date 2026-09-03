@@ -9,3 +9,8 @@
 *.pem
 *.key
 access_keys_temp.json
+
+# SBOM / vulnerability scan outputs
+sbom-*.json
+grype-report*.json
+package-lock-baseline.json

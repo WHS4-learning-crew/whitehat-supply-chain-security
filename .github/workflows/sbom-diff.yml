@@ -1,0 +1,77 @@
+name: SBOM Diff and Risk Scan
+
+on:
+  push:
+    branches: [feat/sbom-diff]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  sbom-diff:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Generate current SBOM
+        uses: anchore/sbom-action@v0
+        with:
+          path: ./app
+          format: cyclonedx-json
+          output-file: sbom-current.json
+          artifact-name: sbom-current.cyclonedx.json
+
+      - name: Prepare previous commit
+        run: |
+          mkdir -p /tmp/sbom-baseline
+          git archive HEAD^ | tar -x -C /tmp/sbom-baseline
+          if [ -f /tmp/sbom-baseline/app/package-lock.json ]; then
+            cp /tmp/sbom-baseline/app/package-lock.json package-lock-baseline.json
+          else
+            printf '{"packages":{}}\n' > package-lock-baseline.json
+          fi
+
+      - name: Generate previous-commit SBOM
+        uses: anchore/sbom-action@v0
+        with:
+          path: /tmp/sbom-baseline/app
+          format: cyclonedx-json
+          output-file: sbom-baseline.json
+          upload-artifact: false
+
+      - name: Diff and score new packages
+        run: |
+          python3 scripts/sbom_gate.py \
+            --baseline sbom-baseline.json \
+            --current sbom-current.json \
+            --baseline-lock package-lock-baseline.json \
+            --current-lock app/package-lock.json \
+            --threshold 60 \
+            --report sbom-risk-report.json
+
+      - name: Scan SBOM with Grype
+        if: always()
+        uses: anchore/scan-action@v7
+        with:
+          sbom: sbom-current.json
+          fail-build: false
+          output-format: json
+          output-file: grype-report.json
+
+      - name: Upload scan evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom-security-results
+          path: |
+            sbom-current.json
+            sbom-baseline.json
+            sbom-risk-report.json
+            grype-report.json
+          retention-days: 7
