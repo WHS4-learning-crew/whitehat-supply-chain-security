@@ -123,6 +123,7 @@ jobs:
           path: /tmp/whitehat-demo.tar
           retention-days: 1
 
+  # trivy-job 연결
   trivy-scan:
     name: Trivy Image Scan
     runs-on: ubuntu-latest
@@ -138,14 +139,49 @@ jobs:
       - name: Load image
         run: docker load -i /tmp/whitehat-demo.tar
 
-      - name: Trivy scan
+      - name: Trivy scan (JSON output)
         uses: aquasecurity/trivy-action@master
         with:
           image-ref: whitehat-demo:latest
-          format: table
-          exit-code: '1'
+          format: json
+          output: trivy-results.json
+          exit-code: '0'        # 실패 판단은 후처리 step에서 함
           severity: 'CRITICAL'
           ignore-unfixed: true
+
+      - name: Post-process (unique CVE + Fixed Version 재집계)
+        run: |
+          echo "=== Trivy 재집계 결과 ==="
+
+          jq -r '
+            [.Results[]?.Vulnerabilities[]?
+              | select(.FixedVersion != null and .FixedVersion != "")
+            ]
+            | unique_by(.VulnerabilityID)
+            | .[]
+            | "\(.VulnerabilityID)\t\(.PkgName)\t\(.InstalledVersion)\t\(.FixedVersion)\t\(.Severity)"
+          ' trivy-results.json | tee unique-cves.tsv
+
+          COUNT=$(wc -l < unique-cves.tsv | tr -d ' ')
+          echo ""
+          echo "고유 CVE (Fixed Version 존재) 개수: $COUNT"
+
+          if [ "$COUNT" -gt 0 ]; then
+            echo "::error::CRITICAL 등급 + 패치 가능한 고유 CVE ${COUNT}건 발견 — Job 실패"
+            exit 1
+          else
+            echo "패치 가능한 CRITICAL CVE 없음 — 통과"
+          fi
+
+      - name: Upload Trivy report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: trivy-report
+          path: |
+            trivy-results.json
+            unique-cves.tsv
+          retention-days: 7
 
   ecr-push:
     name: Push Image to ECR
