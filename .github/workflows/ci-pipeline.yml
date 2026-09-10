@@ -73,26 +73,72 @@ jobs:
           additional_args: --minimum-severity HIGH
 
   sbom-diff:
-    name: Generate SBOM
+    name: SBOM Diff and Risk Scan
     runs-on: ubuntu-latest
     needs: iac-scan
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
 
-      - name: Install Syft
-        run: |
-          curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b /usr/local/bin
+      - name: Generate current SBOM
+        uses: anchore/sbom-action@v0
+        with:
+          path: ./app
+          format: cyclonedx-json
+          output-file: sbom-current.json
+          artifact-name: sbom-current.cyclonedx.json
 
-      - name: Generate SBOM
+      - name: Prepare previous commit
         run: |
-          syft dir:. -o cyclonedx-json > sbom-current.json
+          mkdir -p /tmp/sbom-baseline
+          git archive HEAD^ | tar -x -C /tmp/sbom-baseline
+          if [ -f /tmp/sbom-baseline/app/package-lock.json ]; then
+            cp /tmp/sbom-baseline/app/package-lock.json package-lock-baseline.json
+          else
+            printf '{"packages":{}}\n' > package-lock-baseline.json
+          fi
 
-      - name: Check SBOM
+      - name: Generate previous-commit SBOM
+        uses: anchore/sbom-action@v0
+        with:
+          path: /tmp/sbom-baseline/app
+          format: cyclonedx-json
+          output-file: sbom-baseline.json
+          upload-artifact: false
+
+      - name: Diff and score new packages
         run: |
-          test -s sbom-current.json
-          echo "SBOM generated successfully"
+          python3 scripts/sbom_gate.py \
+            --baseline sbom-baseline.json \
+            --current sbom-current.json \
+            --baseline-lock package-lock-baseline.json \
+            --current-lock app/package-lock.json \
+            --threshold 60 \
+            --report sbom-risk-report.json
+
+      - name: Scan SBOM with Grype
+        if: always()
+        uses: anchore/scan-action@v7
+        with:
+          sbom: sbom-current.json
+          fail-build: false
+          output-format: json
+          output-file: grype-report.json
+
+      - name: Upload scan evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom-security-results
+          path: |
+            sbom-current.json
+            sbom-baseline.json
+            sbom-risk-report.json
+            grype-report.json
+          retention-days: 7
 
   build:
     name: Build Docker Image
@@ -138,14 +184,59 @@ jobs:
       - name: Load image
         run: docker load -i /tmp/whitehat-demo.tar
 
-      - name: Trivy scan
+      - name: Get today's date
+        id: date
+        run: echo "date=$(date +'%Y-%m-%d')" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Trivy DB
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/trivy
+          key: trivy-db-${{ steps.date.outputs.date }}
+          restore-keys: |
+            trivy-db-
+
+      - name: Trivy scan (JSON output)
         uses: aquasecurity/trivy-action@master
         with:
           image-ref: whitehat-demo:latest
-          format: table
-          exit-code: '1'
+          format: json
+          output: trivy-results.json
+          exit-code: '0'        # 실패 판단은 후처리 step에서 함
           severity: 'CRITICAL'
           ignore-unfixed: true
+          cache-dir: ~/.cache/trivy   # DB 캐시
+
+      - name: Post-process (unique CVE + Fixed Version 재집계)
+        run: |
+          echo "=== Trivy 재집계 결과 ==="
+          jq -r '
+            [.Results[]?.Vulnerabilities[]?
+              | select(.FixedVersion != null and .FixedVersion != "")
+            ]
+            | unique_by(.VulnerabilityID)
+            | .[]
+            | "\(.VulnerabilityID)\t\(.PkgName)\t\(.InstalledVersion)\t\(.FixedVersion)\t\(.Severity)"
+          ' trivy-results.json | tee unique-cves.tsv
+          COUNT=$(wc -l < unique-cves.tsv | tr -d ' ')
+          echo ""
+          echo "고유 CVE (Fixed Version 존재) 개수: $COUNT"
+          if [ "$COUNT" -gt 0 ]; then
+            echo "::error::CRITICAL 등급 + 패치 가능한 고유 CVE ${COUNT}건 발견 — Job 실패"
+            exit 1
+          else
+            echo "패치 가능한 CRITICAL CVE 없음 — 통과"
+          fi
+
+      - name: Upload Trivy report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: trivy-report
+          path: |
+            trivy-results.json
+            unique-cves.tsv
+          retention-days: 7
 
   ecr-push:
     name: Push Image to ECR
@@ -211,5 +302,6 @@ jobs:
 
       # 참고: certificate-identity / certificate-oidc-issuer 값은 이 sign 단계가 아니라
       # Kyverno 검증 정책 쪽에 설정하는 값입니다.
-      # 계산값(참고용): identity=https://github.com/WHS4-learning-crew/whitehat-supply-chain-security/.github/workflows/ci-pipeline.yml@refs/heads/feat/ci-pipeline
-      #                issuer=https://token.actions.githubusercontent.com
+      # 검증 완료 (cosign verify 통과 확인됨):
+      # identity=https://github.com/WHS4-learning-crew/whitehat-supply-chain-security/.github/workflows/ci-pipeline.yml@refs/heads/feat/ci-pipeline
+      # issuer=https://token.actions.githubusercontent.com
