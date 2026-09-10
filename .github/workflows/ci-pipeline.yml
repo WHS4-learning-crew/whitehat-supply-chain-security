@@ -66,6 +66,10 @@ jobs:
             --compact \
             --quiet
 
+      # Terraform 코드 tfsec 검사
+      # PM이 작성한 infra-rbac/ Terraform 코드만 검사 대상으로 함.
+      # 기존 EKS/VPC/NodeGroup은 eksctl(CloudFormation) 기반이므로
+      # 이번 Terraform IaC Scan 범위에서는 제외함 (스캔 범위를 명확히 하기 위한 기록)
       - name: tfsec - Terraform
         uses: aquasecurity/tfsec-action@v1.0.3
         with:
