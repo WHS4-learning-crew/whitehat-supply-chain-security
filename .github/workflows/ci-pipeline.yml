@@ -4,9 +4,6 @@ on:
   push:
     branches:
       - feat/ci-pipeline
-  pull_request:
-    branches:
-      - main
 
 permissions:
   contents: read
@@ -281,6 +278,7 @@ jobs:
           echo "image_uri=$IMAGE_URI" >> "$GITHUB_OUTPUT"
           echo "image_digest_uri=$IMAGE_DIGEST_URI" >> "$GITHUB_OUTPUT"
 
+  
   cosign-sign:
     name: Cosign Keyless Sign
     runs-on: ubuntu-latest
@@ -300,9 +298,18 @@ jobs:
         uses: aws-actions/amazon-ecr-login@v2
 
       - name: Sign image
-        run: cosign sign --yes ${{ needs.ecr-push.outputs.image_digest_uri }}
+        id: sign
+        run: |
+          set -o pipefail
+          cosign sign --yes ${{ needs.ecr-push.outputs.image_digest_uri }} 2>&1 | tee cosign-sign.log
         env:
           COSIGN_EXPERIMENTAL: 1
+ 
+      - name: Report sign failure reason
+        if: failure() && steps.sign.outcome == 'failure'
+        run: |
+          echo "::error::Cosign 서명 실패 - 아래 로그에서 원인 확인 필요"
+          grep -iE "error|denied|timeout|unauthorized" cosign-sign.log || cat cosign-sign.log
 
       # 참고: certificate-identity / certificate-oidc-issuer 값은 이 sign 단계가 아니라
       # Kyverno 검증 정책 쪽에 설정하는 값입니다.
