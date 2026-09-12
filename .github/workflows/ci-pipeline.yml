@@ -192,7 +192,7 @@ jobs:
       - name: Cache Trivy DB
         uses: actions/cache@v4
         with:
-          path: ~/.cache/trivy
+          path: /home/runner/.cache/trivy
           key: trivy-db-${{ steps.date.outputs.date }}
           restore-keys: |
             trivy-db-
@@ -204,26 +204,46 @@ jobs:
           format: json
           output: trivy-results.json
           exit-code: '0'        # 실패 판단은 후처리 step에서 함
-          severity: 'CRITICAL'
+          severity: 'CRITICAL,HIGH'
           ignore-unfixed: true
-          cache-dir: ~/.cache/trivy   # DB 캐시
+          cache-dir: /home/runner/.cache/trivy  # DB 캐시
 
       - name: Post-process (unique CVE + Fixed Version 재집계)
         run: |
-          echo "=== Trivy 재집계 결과 ==="
+          echo "=== CRITICAL (fail 대상) ==="
           jq -r '
             [.Results[]?.Vulnerabilities[]?
-              | select(.FixedVersion != null and .FixedVersion != "")
+              | select(.Severity == "CRITICAL" and .FixedVersion != null and .FixedVersion != "")
             ]
             | unique_by(.VulnerabilityID)
             | .[]
             | "\(.VulnerabilityID)\t\(.PkgName)\t\(.InstalledVersion)\t\(.FixedVersion)\t\(.Severity)"
-          ' trivy-results.json | tee unique-cves.tsv
-          COUNT=$(wc -l < unique-cves.tsv | tr -d ' ')
+          ' trivy-results.json | tee unique-cves-critical.tsv
+
           echo ""
-          echo "고유 CVE (Fixed Version 존재) 개수: $COUNT"
-          if [ "$COUNT" -gt 0 ]; then
-            echo "::error::CRITICAL 등급 + 패치 가능한 고유 CVE ${COUNT}건 발견 — Job 실패"
+          echo "=== HIGH (리포트만, fail 안 함) ==="
+          jq -r '
+            [.Results[]?.Vulnerabilities[]?
+              | select(.Severity == "HIGH" and .FixedVersion != null and .FixedVersion != "")
+            ]
+            | unique_by(.VulnerabilityID)
+            | .[]
+            | "\(.VulnerabilityID)\t\(.PkgName)\t\(.InstalledVersion)\t\(.FixedVersion)\t\(.Severity)"
+          ' trivy-results.json | tee unique-cves-high.tsv
+
+          CRITICAL_COUNT=$(wc -l < unique-cves-critical.tsv | tr -d ' ')
+          HIGH_COUNT=$(wc -l < unique-cves-high.tsv | tr -d ' ')
+
+          echo ""
+          echo "CRITICAL 고유 CVE: $CRITICAL_COUNT 건 (fail 대상)"
+          echo "HIGH 고유 CVE: $HIGH_COUNT 건 (리포트만, warning)"
+
+          if [ "$HIGH_COUNT" -gt 0 ]; then
+            echo "::warning::HIGH 등급 고유 CVE ${HIGH_COUNT}건 발견 — 참고용 기록"
+          fi
+
+          if [ "$CRITICAL_COUNT" -gt 0 ]; then
+            echo "::error::CRITICAL 등급 + 패치 가능한 고유 CVE ${CRITICAL_COUNT}건 발견 — Job 실패"
             exit 1
           else
             echo "패치 가능한 CRITICAL CVE 없음 — 통과"
@@ -236,7 +256,8 @@ jobs:
           name: trivy-report
           path: |
             trivy-results.json
-            unique-cves.tsv
+            unique-cves-critical.tsv
+            unique-cves-high.tsv
           retention-days: 7
 
   ecr-push:
