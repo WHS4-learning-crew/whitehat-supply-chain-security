@@ -28,7 +28,7 @@ jobs:
           sudo mv gitleaks /usr/local/bin/
 
       - name: Run Gitleaks
-        run: gitleaks detect --source . -v
+        run: gitleaks detect --source . --config .gitleaks.toml -v
 
   iac-scan:
     name: Checkov + tfsec
@@ -281,7 +281,7 @@ jobs:
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: arn:aws:iam::984675940604:role/GitHubActionsECRRole
+          role-to-assume: arn:aws:iam::<ACCOUNT_ID>:role/GitHubActionsECRRole
           aws-region: ap-northeast-2
 
       - name: Login to Amazon ECR
@@ -293,13 +293,11 @@ jobs:
         run: |
           IMAGE_URI="${{ steps.ecr-login.outputs.registry }}/whs4-demo-app:${{ github.sha }}"
           docker tag whitehat-demo:latest "$IMAGE_URI"
-          # push 결과에서 digest를 뽑아서, 이후 cosign 서명은 tag가 아니라 digest로 고정한다
           DIGEST=$(docker push "$IMAGE_URI" | grep -oP 'digest: \Ksha256:[a-f0-9]+')
           IMAGE_DIGEST_URI="${{ steps.ecr-login.outputs.registry }}/whs4-demo-app@${DIGEST}"
           echo "image_uri=$IMAGE_URI" >> "$GITHUB_OUTPUT"
           echo "image_digest_uri=$IMAGE_DIGEST_URI" >> "$GITHUB_OUTPUT"
 
-  
   cosign-sign:
     name: Cosign Keyless Sign
     runs-on: ubuntu-latest
@@ -312,7 +310,7 @@ jobs:
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: arn:aws:iam::984675940604:role/GitHubActionsECRRole
+          role-to-assume: arn:aws:iam::<ACCOUNT_ID>:role/GitHubActionsECRRole
           aws-region: ap-northeast-2
 
       - name: Login to Amazon ECR
@@ -325,7 +323,7 @@ jobs:
           cosign sign --yes ${{ needs.ecr-push.outputs.image_digest_uri }} 2>&1 | tee cosign-sign.log
         env:
           COSIGN_EXPERIMENTAL: 1
- 
+
       - name: Report sign failure reason
         if: failure() && steps.sign.outcome == 'failure'
         run: |

@@ -1,0 +1,169 @@
+# .gitleaks.toml
+# 프로젝트: 클라우드 네이티브 공급망 및 EKS 런타임 보안 구축
+# 담당: 권민찬
+#
+# 설계 근거:
+#   GitHub Secret Scanning의 "Generic(비공급자) 패턴" 목록을 참고하여 작성.
+#   해당 목록에는 mongodb_connection_string, mysql_connection_string,
+#   postgres_connection_string, http_basic_authentication_header 등이 포함되어 있으며,
+#   DB 연결 문자열은 정밀도(precision) High로 분류되어 오탐 위험이 낮음.
+#   => "형식이 정해진 패턴부터 우선 추가한다"는 판단의 근거.
+#
+# 검증: gitleaks v8.21.2 기준, 의도적으로 작성한 테스트 케이스로 탐지·오탐 확인 완료
+
+title = "WHS4 Supply Chain Security - gitleaks config"
+
+# 기본 룰셋(AWS 키, GitHub 토큰 등)을 상속하고 그 위에 커스텀 룰을 추가
+[extend]
+useDefault = true
+
+# ===============================================================
+# 전역 Allowlist
+# ===============================================================
+[allowlist]
+description = "프로젝트 공통 예외"
+
+paths = [
+  '''(?i)\.git/''',
+  '''(?i)node_modules/''',
+  '''(?i)vendor/''',
+  '''(?i)\.terraform/''',
+  '''(?i)(^|/)(docs|examples?)/''',
+  '''(?i)\.example$''',
+  '''(?i)\.sample$''',
+  '''(?i)\.md$''',
+]
+
+regexTarget = "match"
+regexes = [
+  '''AKIAIOSFODNN7EXAMPLE''',
+  '''wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY''',
+  '''\$\{?[A-Za-z_][A-Za-z0-9_]*\}?''',
+  '''os\.getenv''',
+  '''os\.environ''',
+  '''process\.env''',
+  '''System\.getenv''',
+  '''FAKE1234567890EXAMPLE''',
+  '''hello-from-secrets-manager''',
+]
+
+# ===============================================================
+# 1. DB 연결 문자열 (GitHub Secret Scanning Generic 패턴 대응)
+# ===============================================================
+
+[[rules]]
+id = "mongodb-connection-string"
+description = "MongoDB 연결 문자열에 자격증명 포함"
+regex = '''(?i)\bmongodb(?:\+srv)?://[^\s:@/]+:([^\s@/]+)@[^\s/]+'''
+secretGroup = 1
+keywords = ["mongodb"]
+tags = ["database", "mongodb", "credentials"]
+
+  [[rules.allowlists]]
+  description = "더미 값 및 로컬 환경 제외"
+  regexTarget = "line"
+  regexes = [
+    '''(?i)(example|sample|dummy|fake|placeholder|changeme|redacted)''',
+    '''(?i)your[-_]?(password|secret|token|key)''',
+    '''(?i)@(localhost|127\.0\.0\.1|0\.0\.0\.0|host\.docker\.internal)''',
+  ]
+
+[[rules]]
+id = "postgres-connection-string"
+description = "PostgreSQL 연결 문자열에 자격증명 포함"
+regex = '''(?i)\b(?:postgres|postgresql)://[^\s:@/]+:([^\s@/]+)@[^\s/]+'''
+secretGroup = 1
+keywords = ["postgres"]
+tags = ["database", "postgres", "credentials"]
+
+  [[rules.allowlists]]
+  description = "더미 값 및 로컬 환경 제외"
+  regexTarget = "line"
+  regexes = [
+    '''(?i)(example|sample|dummy|fake|placeholder|changeme|redacted)''',
+    '''(?i)your[-_]?(password|secret|token|key)''',
+    '''(?i)@(localhost|127\.0\.0\.1|0\.0\.0\.0|host\.docker\.internal)''',
+  ]
+
+[[rules]]
+id = "mysql-connection-string"
+description = "MySQL 연결 문자열에 자격증명 포함"
+regex = '''(?i)\bmysql://[^\s:@/]+:([^\s@/]+)@[^\s/]+'''
+secretGroup = 1
+keywords = ["mysql"]
+tags = ["database", "mysql", "credentials"]
+
+  [[rules.allowlists]]
+  description = "더미 값 및 로컬 환경 제외"
+  regexTarget = "line"
+  regexes = [
+    '''(?i)(example|sample|dummy|fake|placeholder|changeme|redacted)''',
+    '''(?i)your[-_]?(password|secret|token|key)''',
+    '''(?i)@(localhost|127\.0\.0\.1|0\.0\.0\.0|host\.docker\.internal)''',
+  ]
+
+[[rules]]
+id = "redis-connection-string"
+description = "Redis 연결 문자열에 자격증명 포함"
+regex = '''(?i)\bredis(?:s)?://[^\s:@/]*:([^\s@/]+)@[^\s/]+'''
+secretGroup = 1
+keywords = ["redis"]
+tags = ["database", "redis", "credentials"]
+
+  [[rules.allowlists]]
+  description = "더미 값 및 로컬 환경 제외"
+  regexTarget = "line"
+  regexes = [
+    '''(?i)(example|sample|dummy|fake|placeholder|changeme|redacted)''',
+    '''(?i)your[-_]?(password|secret|token|key)''',
+    '''(?i)@(localhost|127\.0\.0\.1|0\.0\.0\.0|host\.docker\.internal)''',
+  ]
+
+[[rules]]
+id = "amqp-connection-string"
+description = "AMQP(RabbitMQ) 연결 문자열에 자격증명 포함"
+regex = '''(?i)\bamqp(?:s)?://[^\s:@/]+:([^\s@/]+)@[^\s/]+'''
+secretGroup = 1
+keywords = ["amqp"]
+tags = ["message-queue", "credentials"]
+
+  [[rules.allowlists]]
+  description = "더미 값 및 로컬 환경 제외"
+  regexTarget = "line"
+  regexes = [
+    '''(?i)(example|sample|dummy|fake|placeholder|changeme|redacted)''',
+    '''(?i)your[-_]?(password|secret|token|key)''',
+    '''(?i)@(localhost|127\.0\.0\.1|0\.0\.0\.0|host\.docker\.internal)''',
+  ]
+
+# ===============================================================
+# 2. HTTP 인증 헤더 (GitHub Secret Scanning Generic 패턴 대응)
+# ===============================================================
+
+[[rules]]
+id = "http-basic-auth-header"
+description = "HTTP Basic 인증 헤더에 자격증명 하드코딩"
+regex = '''(?i)authorization\s*[:=]\s*['"]?basic\s+([a-z0-9+/]{16,}={0,2})'''
+secretGroup = 1
+keywords = ["authorization"]
+tags = ["http", "credentials"]
+
+[[rules]]
+id = "http-bearer-token"
+description = "HTTP Bearer 토큰 하드코딩"
+regex = '''(?i)authorization\s*[:=]\s*['"]?bearer\s+([a-z0-9_\-\.=]{20,})'''
+secretGroup = 1
+keywords = ["authorization"]
+tags = ["http", "token"]
+
+# ===============================================================
+# 3. 쿠버네티스 환경 특화 (본 프로젝트 맥락)
+# ===============================================================
+
+[[rules]]
+id = "k8s-secret-plaintext-data"
+description = "Kubernetes Secret 매니페스트에 stringData로 평문 값 작성"
+regex = '''(?i)stringData:\s*\n(?:\s+[\w\-\.]+:\s*['"]?([^\s'"]{8,})['"]?\s*\n?)+'''
+secretGroup = 1
+keywords = ["stringdata"]
+tags = ["kubernetes", "credentials"]
