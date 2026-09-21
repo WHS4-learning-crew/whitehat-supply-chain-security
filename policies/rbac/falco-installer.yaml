@@ -1,0 +1,89 @@
+# 클러스터 적용 상태에서 추출 (계정 ID는 ${AWS_ACCOUNT_ID}로 치환)
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: falco-installer
+rules:
+- apiGroups:
+  - ''
+  resources:
+  - nodes
+  - pods
+  - namespaces
+  - serviceaccounts
+  - configmaps
+  - secrets
+  - services
+  - endpoints
+  verbs:
+  - get
+  - list
+  - watch
+  - create
+  - update
+  - patch
+  - delete
+- apiGroups:
+  - ''
+  resources:
+  - pods/log
+  - pods/exec
+  verbs:
+  - get
+  - create
+- apiGroups:
+  - apps
+  resources:
+  - daemonsets
+  - deployments
+  - statefulsets
+  verbs:
+  - get
+  - list
+  - watch
+  - create
+  - update
+  - patch
+  - delete
+- apiGroups:
+  - rbac.authorization.k8s.io
+  resources:
+  - clusterroles
+  - clusterrolebindings
+  - roles
+  - rolebindings
+  verbs:
+  - get
+  - list
+  - watch
+  - create
+  - update
+  - patch
+  - delete
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: sungyujeong-falco-installer
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: falco-installer
+subjects:
+- apiGroup: rbac.authorization.k8s.io
+  kind: User
+  name: arn:aws:iam::${AWS_ACCOUNT_ID}:user/sungyujeong
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: sungyujeong-falco-ns-admin
+  namespace: falco
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: admin
+subjects:
+- apiGroup: rbac.authorization.k8s.io
+  kind: User
+  name: arn:aws:iam::${AWS_ACCOUNT_ID}:user/sungyujeong
