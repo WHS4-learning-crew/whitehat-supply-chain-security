@@ -207,6 +207,7 @@ jobs:
           severity: 'CRITICAL,HIGH'
           ignore-unfixed: true
           cache-dir: /home/runner/.cache/trivy  # DB 캐시
+          trivyignores: app/.trivyignore        # Waiver 검증
 
       - name: Post-process (unique CVE + Fixed Version 재집계)
         run: |
