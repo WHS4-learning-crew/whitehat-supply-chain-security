@@ -63,9 +63,13 @@ tags = ["database", "mongodb", "credentials"]
   description = "더미 값 및 로컬 환경 제외"
   regexTarget = "line"
   regexes = [
-    '''(?i)(example|sample|dummy|fake|placeholder|changeme|redacted)''',
+    # 명백한 플레이스홀더 표현만 제외
     '''(?i)your[-_]?(password|secret|token|key)''',
-    '''(?i)@(localhost|127\.0\.0\.1|0\.0\.0\.0|host\.docker\.internal)''',
+    '''(?i)(changeme|placeholder|redacted)''',
+    '''<[a-zA-Z_]+>''',
+    '''(?i)(xxxx+|\*\*\*+)''',
+    # RFC 2606 예약 도메인·로컬 주소가 호스트 위치에 올 때만 제외
+    '''(?i)@(example\.(com|org|net)|localhost|127\.0\.0\.1|0\.0\.0\.0|host\.docker\.internal)[:/]''',
   ]
 
 [[rules]]
@@ -80,9 +84,13 @@ tags = ["database", "postgres", "credentials"]
   description = "더미 값 및 로컬 환경 제외"
   regexTarget = "line"
   regexes = [
-    '''(?i)(example|sample|dummy|fake|placeholder|changeme|redacted)''',
+    # 명백한 플레이스홀더 표현만 제외
     '''(?i)your[-_]?(password|secret|token|key)''',
-    '''(?i)@(localhost|127\.0\.0\.1|0\.0\.0\.0|host\.docker\.internal)''',
+    '''(?i)(changeme|placeholder|redacted)''',
+    '''<[a-zA-Z_]+>''',
+    '''(?i)(xxxx+|\*\*\*+)''',
+    # RFC 2606 예약 도메인·로컬 주소가 호스트 위치에 올 때만 제외
+    '''(?i)@(example\.(com|org|net)|localhost|127\.0\.0\.1|0\.0\.0\.0|host\.docker\.internal)[:/]''',
   ]
 
 [[rules]]
@@ -97,9 +105,13 @@ tags = ["database", "mysql", "credentials"]
   description = "더미 값 및 로컬 환경 제외"
   regexTarget = "line"
   regexes = [
-    '''(?i)(example|sample|dummy|fake|placeholder|changeme|redacted)''',
+    # 명백한 플레이스홀더 표현만 제외
     '''(?i)your[-_]?(password|secret|token|key)''',
-    '''(?i)@(localhost|127\.0\.0\.1|0\.0\.0\.0|host\.docker\.internal)''',
+    '''(?i)(changeme|placeholder|redacted)''',
+    '''<[a-zA-Z_]+>''',
+    '''(?i)(xxxx+|\*\*\*+)''',
+    # RFC 2606 예약 도메인·로컬 주소가 호스트 위치에 올 때만 제외
+    '''(?i)@(example\.(com|org|net)|localhost|127\.0\.0\.1|0\.0\.0\.0|host\.docker\.internal)[:/]''',
   ]
 
 [[rules]]
@@ -114,9 +126,13 @@ tags = ["database", "redis", "credentials"]
   description = "더미 값 및 로컬 환경 제외"
   regexTarget = "line"
   regexes = [
-    '''(?i)(example|sample|dummy|fake|placeholder|changeme|redacted)''',
+    # 명백한 플레이스홀더 표현만 제외
     '''(?i)your[-_]?(password|secret|token|key)''',
-    '''(?i)@(localhost|127\.0\.0\.1|0\.0\.0\.0|host\.docker\.internal)''',
+    '''(?i)(changeme|placeholder|redacted)''',
+    '''<[a-zA-Z_]+>''',
+    '''(?i)(xxxx+|\*\*\*+)''',
+    # RFC 2606 예약 도메인·로컬 주소가 호스트 위치에 올 때만 제외
+    '''(?i)@(example\.(com|org|net)|localhost|127\.0\.0\.1|0\.0\.0\.0|host\.docker\.internal)[:/]''',
   ]
 
 [[rules]]
@@ -131,9 +147,13 @@ tags = ["message-queue", "credentials"]
   description = "더미 값 및 로컬 환경 제외"
   regexTarget = "line"
   regexes = [
-    '''(?i)(example|sample|dummy|fake|placeholder|changeme|redacted)''',
+    # 명백한 플레이스홀더 표현만 제외
     '''(?i)your[-_]?(password|secret|token|key)''',
-    '''(?i)@(localhost|127\.0\.0\.1|0\.0\.0\.0|host\.docker\.internal)''',
+    '''(?i)(changeme|placeholder|redacted)''',
+    '''<[a-zA-Z_]+>''',
+    '''(?i)(xxxx+|\*\*\*+)''',
+    # RFC 2606 예약 도메인·로컬 주소가 호스트 위치에 올 때만 제외
+    '''(?i)@(example\.(com|org|net)|localhost|127\.0\.0\.1|0\.0\.0\.0|host\.docker\.internal)[:/]''',
   ]
 
 # ===============================================================
