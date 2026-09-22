@@ -176,6 +176,9 @@ jobs:
     needs: build
 
     steps:
+      - name: Checkout repository 
+        uses: actions/checkout@v4
+    
       - name: Download image artifact
         uses: actions/download-artifact@v4
         with:
@@ -207,6 +210,7 @@ jobs:
           severity: 'CRITICAL,HIGH'
           ignore-unfixed: true
           cache-dir: /home/runner/.cache/trivy  # DB 캐시
+          trivyignores: app/.trivyignore        # Waiver 검증
 
       - name: Post-process (unique CVE + Fixed Version 재집계)
         run: |
