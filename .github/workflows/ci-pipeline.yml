@@ -1,0 +1,341 @@
+name: CI Security Pipeline
+
+on:
+  push:
+    branches:
+      - feat/ci-pipeline
+
+permissions:
+  contents: read
+  id-token: write   # OIDC 인증용 (ECR push, Cosign keyless 서명에 필요)
+
+jobs:
+  gitleaks-scan:
+    name: Gitleaks Secret Scan
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install Gitleaks
+        run: |
+          curl -sSL https://github.com/gitleaks/gitleaks/releases/download/v8.21.2/gitleaks_8.21.2_linux_x64.tar.gz -o gitleaks.tar.gz
+          tar -xzf gitleaks.tar.gz gitleaks
+          chmod +x gitleaks
+          sudo mv gitleaks /usr/local/bin/
+
+      - name: Run Gitleaks
+        run: gitleaks detect --source . --config .gitleaks.toml -v
+
+  iac-scan:
+    name: Checkov + tfsec
+    runs-on: ubuntu-latest
+    needs: gitleaks-scan
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Checkov
+        run: pip install checkov
+
+      - name: Checkov - Dockerfile
+        run: |
+          checkov -d . \
+            --framework dockerfile \
+            --compact \
+            --quiet
+
+      - name: Checkov - Kubernetes
+        run: |
+          checkov -d . \
+            --framework kubernetes \
+            --compact \
+            --quiet
+
+      - name: Checkov - GitHub Actions
+        run: |
+          checkov -d . \
+            --framework github_actions \
+            --compact \
+            --quiet
+
+      # Terraform 코드 tfsec 검사
+      # PM이 작성한 infra-rbac/ Terraform 코드만 검사 대상으로 함.
+      # 기존 EKS/VPC/NodeGroup은 eksctl(CloudFormation) 기반이므로
+      # 이번 Terraform IaC Scan 범위에서는 제외함 (스캔 범위를 명확히 하기 위한 기록)
+      - name: tfsec - Terraform
+        uses: aquasecurity/tfsec-action@v1.0.3
+        with:
+          working_directory: infra-rbac/
+          additional_args: --minimum-severity HIGH
+
+  sbom-diff:
+    name: SBOM Diff and Risk Scan
+    runs-on: ubuntu-latest
+    needs: iac-scan
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Generate current SBOM
+        uses: anchore/sbom-action@v0
+        with:
+          path: ./app
+          format: cyclonedx-json
+          output-file: sbom-current.json
+          artifact-name: sbom-current.cyclonedx.json
+
+      - name: Prepare previous commit
+        run: |
+          mkdir -p /tmp/sbom-baseline
+          git archive HEAD^ | tar -x -C /tmp/sbom-baseline
+          if [ -f /tmp/sbom-baseline/app/package-lock.json ]; then
+            cp /tmp/sbom-baseline/app/package-lock.json package-lock-baseline.json
+          else
+            printf '{"packages":{}}\n' > package-lock-baseline.json
+          fi
+
+      - name: Generate previous-commit SBOM
+        uses: anchore/sbom-action@v0
+        with:
+          path: /tmp/sbom-baseline/app
+          format: cyclonedx-json
+          output-file: sbom-baseline.json
+          upload-artifact: false
+
+      - name: Diff and score new packages
+        run: |
+          python3 scripts/sbom_gate.py \
+            --baseline sbom-baseline.json \
+            --current sbom-current.json \
+            --baseline-lock package-lock-baseline.json \
+            --current-lock app/package-lock.json \
+            --threshold 60 \
+            --report sbom-risk-report.json
+
+      - name: Scan SBOM with Grype
+        if: always()
+        uses: anchore/scan-action@v7
+        with:
+          sbom: sbom-current.json
+          fail-build: false
+          output-format: json
+          output-file: grype-report.json
+
+      - name: Upload scan evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom-security-results
+          path: |
+            sbom-current.json
+            sbom-baseline.json
+            sbom-risk-report.json
+            grype-report.json
+          retention-days: 7
+
+  build:
+    name: Build Docker Image
+    runs-on: ubuntu-latest
+    needs: sbom-diff
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./app
+          file: ./app/Dockerfile
+          push: false
+          load: true
+          tags: whitehat-demo:latest
+          outputs: type=docker,dest=/tmp/whitehat-demo.tar
+
+      - name: Upload image artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: docker-image
+          path: /tmp/whitehat-demo.tar
+          retention-days: 1
+
+  trivy-scan:
+    name: Trivy Image Scan
+    runs-on: ubuntu-latest
+    needs: build
+
+    steps:
+      - name: Checkout repository 
+        uses: actions/checkout@v4
+    
+      - name: Download image artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: docker-image
+          path: /tmp
+
+      - name: Load image
+        run: docker load -i /tmp/whitehat-demo.tar
+
+      - name: Get today's date
+        id: date
+        run: echo "date=$(date +'%Y-%m-%d')" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Trivy DB
+        uses: actions/cache@v4
+        with:
+          path: /home/runner/.cache/trivy
+          key: trivy-db-${{ steps.date.outputs.date }}
+          restore-keys: |
+            trivy-db-
+
+      - name: Trivy scan (JSON output)
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: whitehat-demo:latest
+          format: json
+          output: trivy-results.json
+          exit-code: '0'        # 실패 판단은 후처리 step에서 함
+          severity: 'CRITICAL,HIGH'
+          ignore-unfixed: true
+          cache-dir: /home/runner/.cache/trivy  # DB 캐시
+          trivyignores: app/.trivyignore        # Waiver 검증
+
+      - name: Post-process (unique CVE + Fixed Version 재집계)
+        run: |
+          echo "=== CRITICAL (fail 대상) ==="
+          jq -r '
+            [.Results[]?.Vulnerabilities[]?
+              | select(.Severity == "CRITICAL" and .FixedVersion != null and .FixedVersion != "")
+            ]
+            | unique_by(.VulnerabilityID)
+            | .[]
+            | "\(.VulnerabilityID)\t\(.PkgName)\t\(.InstalledVersion)\t\(.FixedVersion)\t\(.Severity)"
+          ' trivy-results.json | tee unique-cves-critical.tsv
+
+          echo ""
+          echo "=== HIGH (리포트만, fail 안 함) ==="
+          jq -r '
+            [.Results[]?.Vulnerabilities[]?
+              | select(.Severity == "HIGH" and .FixedVersion != null and .FixedVersion != "")
+            ]
+            | unique_by(.VulnerabilityID)
+            | .[]
+            | "\(.VulnerabilityID)\t\(.PkgName)\t\(.InstalledVersion)\t\(.FixedVersion)\t\(.Severity)"
+          ' trivy-results.json | tee unique-cves-high.tsv
+
+          CRITICAL_COUNT=$(wc -l < unique-cves-critical.tsv | tr -d ' ')
+          HIGH_COUNT=$(wc -l < unique-cves-high.tsv | tr -d ' ')
+
+          echo ""
+          echo "CRITICAL 고유 CVE: $CRITICAL_COUNT 건 (fail 대상)"
+          echo "HIGH 고유 CVE: $HIGH_COUNT 건 (리포트만, warning)"
+
+          if [ "$HIGH_COUNT" -gt 0 ]; then
+            echo "::warning::HIGH 등급 고유 CVE ${HIGH_COUNT}건 발견 — 참고용 기록"
+          fi
+
+          if [ "$CRITICAL_COUNT" -gt 0 ]; then
+            echo "::error::CRITICAL 등급 + 패치 가능한 고유 CVE ${CRITICAL_COUNT}건 발견 — Job 실패"
+            exit 1
+          else
+            echo "패치 가능한 CRITICAL CVE 없음 — 통과"
+          fi
+
+      - name: Upload Trivy report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: trivy-report
+          path: |
+            trivy-results.json
+            unique-cves-critical.tsv
+            unique-cves-high.tsv
+          retention-days: 7
+
+  ecr-push:
+    name: Push Image to ECR
+    runs-on: ubuntu-latest
+    needs: trivy-scan
+    outputs:
+      image_uri: ${{ steps.push.outputs.image_uri }}
+      image_digest_uri: ${{ steps.push.outputs.image_digest_uri }}
+
+    steps:
+      - name: Download image artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: docker-image
+          path: /tmp
+
+      - name: Load image
+        run: docker load -i /tmp/whitehat-demo.tar
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::984675940604:role/GitHubActionsECRRole
+          aws-region: ap-northeast-2
+
+      - name: Login to Amazon ECR
+        id: ecr-login
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Tag and push image
+        id: push
+        run: |
+          IMAGE_URI="${{ steps.ecr-login.outputs.registry }}/whs4-demo-app:${{ github.sha }}"
+          docker tag whitehat-demo:latest "$IMAGE_URI"
+          DIGEST=$(docker push "$IMAGE_URI" | grep -oP 'digest: \Ksha256:[a-f0-9]+')
+          IMAGE_DIGEST_URI="${{ steps.ecr-login.outputs.registry }}/whs4-demo-app@${DIGEST}"
+          echo "image_uri=$IMAGE_URI" >> "$GITHUB_OUTPUT"
+          echo "image_digest_uri=$IMAGE_DIGEST_URI" >> "$GITHUB_OUTPUT"
+
+  cosign-sign:
+    name: Cosign Keyless Sign
+    runs-on: ubuntu-latest
+    needs: ecr-push
+
+    steps:
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@v3
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::984675940604:role/GitHubActionsECRRole
+          aws-region: ap-northeast-2
+
+      - name: Login to Amazon ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Sign image
+        id: sign
+        run: |
+          set -o pipefail
+          cosign sign --yes ${{ needs.ecr-push.outputs.image_digest_uri }} 2>&1 | tee cosign-sign.log
+        env:
+          COSIGN_EXPERIMENTAL: 1
+
+      - name: Report sign failure reason
+        if: failure() && steps.sign.outcome == 'failure'
+        run: |
+          echo "::error::Cosign 서명 실패 - 아래 로그에서 원인 확인 필요"
+          grep -iE "error|denied|timeout|unauthorized" cosign-sign.log || cat cosign-sign.log
+
+      # 참고: certificate-identity / certificate-oidc-issuer 값은 이 sign 단계가 아니라
+      # Kyverno 검증 정책 쪽에 설정하는 값입니다.
+      # 검증 완료 (cosign verify 통과 확인됨):
+      # identity=https://github.com/WHS4-learning-crew/whitehat-supply-chain-security/.github/workflows/ci-pipeline.yml@refs/heads/feat/ci-pipeline
+      # issuer=https://token.actions.githubusercontent.com
