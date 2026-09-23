@@ -1,5 +1,10 @@
 # C-3 시나리오 — 내부 beacon 수신 엔드포인트
 # 안전 원칙: 실제 외부 서버가 아닌, 팀이 통제하는 클러스터 내부 서비스로만 통신
+#
+# CKV_K8S_43 (image digest pinning) 관련 메모:
+#   커밋 시점에는 push 전이라 digest를 알 수 없어 tag(v1)로 고정.
+#   CI에서 push 완료 후 digest를 알아내 매니페스트에 되반영하는 후속 스텝이 필요하면
+#   그때 sha256 digest로 교체 예정 (실무상 skip 처리).
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -19,19 +24,48 @@ spec:
         app: c3-beacon-receiver
         scenario: c3-dormant-outbound
     spec:
+      automountServiceAccountToken: false   # CKV_K8S_38
       securityContext:
         runAsNonRoot: true
-        runAsUser: 101
+        runAsUser: 10001                    # CKV_K8S_40 (높은 UID)
+        runAsGroup: 0                       # nginx-unprivileged 이미지가 group 0 쓰기권한을 열어둠
+        seccompProfile:
+          type: RuntimeDefault               # CKV_K8S_31
       containers:
         - name: receiver
           # TODO: 빌드 후 실제 ECR 이미지 URI로 교체
           image: 984675940604.dkr.ecr.ap-northeast-2.amazonaws.com/c3-beacon-receiver:v1
+          imagePullPolicy: Always             # CKV_K8S_15
           securityContext:
             runAsNonRoot: true
-            runAsUser: 101
+            runAsUser: 10001
+            runAsGroup: 0
             allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true      # CKV_K8S_22
+            capabilities:
+              drop: ["ALL"]                    # CKV_K8S_37, CKV_K8S_28
+            seccompProfile:
+              type: RuntimeDefault
           ports:
             - containerPort: 8080
+          livenessProbe:                       # CKV_K8S_8
+            httpGet:
+              path: /beacon
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          readinessProbe:                      # CKV_K8S_9
+            httpGet:
+              path: /beacon
+              port: 8080
+            initialDelaySeconds: 3
+            periodSeconds: 10
+          volumeMounts:
+            # readOnlyRootFilesystem 때문에 nginx가 쓰기 필요한 경로만 emptyDir로 개방
+            - name: cache
+              mountPath: /var/cache/nginx
+            - name: tmp
+              mountPath: /tmp
           resources:
             requests:
               cpu: "50m"
@@ -39,6 +73,11 @@ spec:
             limits:
               cpu: "100m"
               memory: "64Mi"
+      volumes:
+        - name: cache
+          emptyDir: {}
+        - name: tmp
+          emptyDir: {}
 ---
 apiVersion: v1
 kind: Service
