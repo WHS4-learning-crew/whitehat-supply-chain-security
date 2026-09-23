@@ -337,7 +337,7 @@ jobs:
       # issuer=https://token.actions.githubusercontent.com
 
 
-        c3-scenario-build-sign:
+  c3-scenario-build-sign:
     name: Build & Sign C3 Scenario Images
     runs-on: ubuntu-latest
 
