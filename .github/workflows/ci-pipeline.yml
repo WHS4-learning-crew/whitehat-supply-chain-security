@@ -176,9 +176,6 @@ jobs:
     needs: build
 
     steps:
-      - name: Checkout repository 
-        uses: actions/checkout@v4
-    
       - name: Download image artifact
         uses: actions/download-artifact@v4
         with:
@@ -210,7 +207,6 @@ jobs:
           severity: 'CRITICAL,HIGH'
           ignore-unfixed: true
           cache-dir: /home/runner/.cache/trivy  # DB 캐시
-          trivyignores: app/.trivyignore        # Waiver 검증
 
       - name: Post-process (unique CVE + Fixed Version 재집계)
         run: |
@@ -339,3 +335,56 @@ jobs:
       # 검증 완료 (cosign verify 통과 확인됨):
       # identity=https://github.com/WHS4-learning-crew/whitehat-supply-chain-security/.github/workflows/ci-pipeline.yml@refs/heads/feat/ci-pipeline
       # issuer=https://token.actions.githubusercontent.com
+
+
+        c3-scenario-build-sign:
+    name: Build & Sign C3 Scenario Images
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::984675940604:role/GitHubActionsECRRole
+          aws-region: ap-northeast-2
+
+      - name: Login to Amazon ECR
+        id: ecr-login
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build & push receiver image
+        id: receiver-build
+        uses: docker/build-push-action@v6
+        with:
+          context: ./c3-scenario/receiver
+          platforms: linux/amd64
+          push: true
+          tags: ${{ steps.ecr-login.outputs.registry }}/c3-beacon-receiver:v1
+
+      - name: Build & push beacon image
+        id: beacon-build
+        uses: docker/build-push-action@v6
+        with:
+          context: ./c3-scenario/beacon
+          platforms: linux/amd64
+          push: true
+          tags: ${{ steps.ecr-login.outputs.registry }}/c3-beacon:v1
+
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@v3
+
+      - name: Sign receiver image
+        run: cosign sign --yes ${{ steps.ecr-login.outputs.registry }}/c3-beacon-receiver@${{ steps.receiver-build.outputs.digest }}
+        env:
+          COSIGN_EXPERIMENTAL: 1
+
+      - name: Sign beacon image
+        run: cosign sign --yes ${{ steps.ecr-login.outputs.registry }}/c3-beacon@${{ steps.beacon-build.outputs.digest }}
+        env:
+          COSIGN_EXPERIMENTAL: 1
