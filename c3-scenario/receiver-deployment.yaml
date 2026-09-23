@@ -1,0 +1,54 @@
+# C-3 시나리오 — 내부 beacon 수신 엔드포인트
+# 안전 원칙: 실제 외부 서버가 아닌, 팀이 통제하는 클러스터 내부 서비스로만 통신
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: c3-beacon-receiver
+  namespace: ns-kimseoyeon
+  labels:
+    app: c3-beacon-receiver
+    scenario: c3-dormant-outbound
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: c3-beacon-receiver
+  template:
+    metadata:
+      labels:
+        app: c3-beacon-receiver
+        scenario: c3-dormant-outbound
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 101
+      containers:
+        - name: receiver
+          # TODO: 빌드 후 실제 ECR 이미지 URI로 교체
+          image: 984675940604.dkr.ecr.ap-northeast-2.amazonaws.com/c3-beacon-receiver:v1
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 101
+            allowPrivilegeEscalation: false
+          ports:
+            - containerPort: 8080
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "32Mi"
+            limits:
+              cpu: "100m"
+              memory: "64Mi"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: c3-beacon-receiver
+  namespace: ns-kimseoyeon
+spec:
+  selector:
+    app: c3-beacon-receiver
+  ports:
+    - port: 8080
+      targetPort: 8080
+  type: ClusterIP
