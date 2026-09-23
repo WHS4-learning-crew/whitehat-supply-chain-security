@@ -13,6 +13,8 @@ metadata:
   labels:
     app: c3-beacon-receiver
     scenario: c3-dormant-outbound
+  annotations:
+    checkov.io/skip1: "CKV_K8S_43=Image pushed by CI right before this Deployment is applied; digest isn't known at manifest-authoring time. Pinned to immutable version tag(v1) instead. Revisit if CI is changed to inject digest via kustomize/kubectl set image."
 spec:
   replicas: 1
   selector:

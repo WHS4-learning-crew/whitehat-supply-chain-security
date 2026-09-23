@@ -1,0 +1,84 @@
+# C-3 시나리오 — CKV2_K8S_6 대응 NetworkPolicy
+# 두 파드(beacon, receiver) 모두 최소 하나의 NetworkPolicy에 의해 selector로 커버되어야 함.
+#
+# 주의: 클러스터 CNI가 NetworkPolicy를 실제로 강제하는지(Calico/Cilium 등)는 별개 문제입니다.
+# 이 파일은 Checkov 정적 체크(admission 시 정책 존재 여부) 통과가 목적이고,
+# 실제로 트래픽을 제한하고 싶다면 CNI가 NetworkPolicy를 지원하는지 먼저 확인하세요.
+# kube-dns 셀렉터(k8s-app: kube-dns, namespace: kube-system)는 클러스터마다 다를 수 있으니
+# 실제 클러스터에 맞게 확인/조정 필요합니다.
+
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: c3-beacon-receiver-netpol
+  namespace: ns-kimseoyeon
+  labels:
+    scenario: c3-dormant-outbound
+spec:
+  podSelector:
+    matchLabels:
+      app: c3-beacon-receiver
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    # beacon 파드에서 오는 8080 요청만 허용
+    - from:
+        - podSelector:
+            matchLabels:
+              app: c3-beacon
+      ports:
+        - protocol: TCP
+          port: 8080
+  egress:
+    # DNS 조회는 필요하므로 kube-system의 DNS로만 egress 허용
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: c3-beacon-netpol
+  namespace: ns-kimseoyeon
+  labels:
+    scenario: c3-dormant-outbound
+spec:
+  podSelector:
+    matchLabels:
+      app: c3-beacon
+  policyTypes:
+    - Ingress
+    - Egress
+  # ingress 없음: beacon은 아무 요청도 받지 않는 1회성 파드
+  egress:
+    # receiver로의 8080 아웃바운드만 허용 (시나리오 목적상 이 연결 자체가 핵심)
+    - to:
+        - podSelector:
+            matchLabels:
+              app: c3-beacon-receiver
+      ports:
+        - protocol: TCP
+          port: 8080
+    # DNS 조회 허용
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
