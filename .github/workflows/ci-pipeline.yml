@@ -2,8 +2,10 @@ name: CI Security Pipeline
 
 on:
   push:
-    branches:
-      - feat/ci-pipeline
+    branches: [main, feat/ci-pipeline]   
+  pull_request:
+    branches: [main]                     
+  workflow_dispatch:                     
 
 permissions:
   contents: read
