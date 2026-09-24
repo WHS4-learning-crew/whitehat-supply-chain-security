@@ -14,4 +14,5 @@ access_keys_temp.json
 # SBOM / vulnerability scan outputs
 sbom-*.json
 grype-report*.json
-package-lock-baseline.jsonc3-scenario/*.txt
+package-lock-baseline.json
+c3-scenario/*.txt
