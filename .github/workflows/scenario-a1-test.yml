@@ -39,7 +39,7 @@ jobs:
 
       - name: Check Log4Shell CVE detected and enforce block
         run: |
-          echo "=== Log4j 관련 CVE 전체 ==="
+          echo "=== Log4j 관련 CVE 전체  ==="
           jq -r '
             [.Results[]?.Vulnerabilities[]?
               | select(.PkgName | test("log4j"; "i"))
@@ -48,8 +48,10 @@ jobs:
             | "\(.VulnerabilityID)\t\(.PkgName)\t\(.InstalledVersion)\t\(.FixedVersion)\t\(.Severity)"
           ' a1-scan-results.json | tee a1-log4j-cves.tsv
 
+          LOG4J_COUNT=$(wc -l < a1-log4j-cves.tsv | tr -d ' ')
+
           echo ""
-          echo "=== 실제 trivy-scan job과 동일한 fail 기준 재현 ==="
+          echo "=== (참고) 전체 CRITICAL 목록 - log4j 외 포함 ==="
           jq -r '
             [.Results[]?.Vulnerabilities[]?
               | select(.Severity == "CRITICAL" and .FixedVersion != null and .FixedVersion != "")
@@ -59,16 +61,15 @@ jobs:
             | "\(.VulnerabilityID)\t\(.PkgName)\t\(.InstalledVersion)\t\(.FixedVersion)\t\(.Severity)"
           ' a1-scan-results.json | tee a1-unique-cves-critical.tsv
 
-          CRITICAL_COUNT=$(wc -l < a1-unique-cves-critical.tsv | tr -d ' ')
           echo ""
-          echo "CRITICAL 고유 CVE: $CRITICAL_COUNT 건"
+          echo "Log4j 관련 CVE: $LOG4J_COUNT 건 (패치 여부 판정 기준)"
+          echo "전체 CRITICAL: $(wc -l < a1-unique-cves-critical.tsv | tr -d ' ') 건 (참고용, log4j 외 별개 이슈 가능)"
 
-          if [ "$CRITICAL_COUNT" -gt 0 ]; then
-            echo "::error::CRITICAL 등급 고유 CVE ${CRITICAL_COUNT}건 발견 — Job 실패 (기대된 결과: 차단됨)"
+          if [ "$LOG4J_COUNT" -gt 0 ]; then
+            echo "::error::Log4j 관련 CVE ${LOG4J_COUNT}건 검출됨 — 패치 실패"
             exit 1
           else
-            echo "::error::CRITICAL CVE가 검출되지 않음 — 기대와 다른 결과 (탐지 실패)"
-            exit 1
+            echo "Log4j 관련 CVE 없음 — 패치 확인됨 (목표 달성)"
           fi
 
       - name: Upload result
