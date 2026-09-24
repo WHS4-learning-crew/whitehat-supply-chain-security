@@ -3,7 +3,7 @@ name: Scenario A-1 Test (Log4Shell)
 on:
   push:
     branches:
-      - test/a1-trivy-scan
+      - test/a1-trivy-block
 
 permissions:
   contents: read
