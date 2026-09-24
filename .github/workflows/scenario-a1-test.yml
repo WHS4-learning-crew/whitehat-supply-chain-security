@@ -1,0 +1,85 @@
+name: Scenario A-1 Test (Log4Shell)
+
+# 기존 ci-pipeline.yml, app/Dockerfile과 완전히 독립된 워크플로
+# 수동 실행(workflow_dispatch)만 지원 - push/PR로 자동 트리거되지 않음
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test-log4j-detection:
+    name: Log4Shell 탐지 검증 (A-1)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Build test image (log4j transitive dependency)
+        run: |
+          docker build \
+            -f test-scenarios/a1-log4shell/Dockerfile \
+            -t log4j-transitive-test:1.0 \
+            test-scenarios/a1-log4shell/
+
+      - name: Trivy scan (JSON output)
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: log4j-transitive-test:1.0
+          format: json
+          output: a1-scan-results.json
+          exit-code: '0'
+          severity: 'CRITICAL,HIGH'
+          ignore-unfixed: true
+
+      - name: Check Log4Shell CVE detected
+        run: |
+          echo "=== Log4j 관련 CVE 전체 ==="
+          jq -r '
+            [.Results[]?.Vulnerabilities[]?
+              | select(.PkgName | test("log4j"; "i"))
+            ]
+            | .[]
+            | "\(.VulnerabilityID)\t\(.PkgName)\t\(.InstalledVersion)\t\(.FixedVersion)\t\(.Severity)"
+          ' a1-scan-results.json | tee a1-log4j-cves.tsv
+
+          echo ""
+          echo "=== CVE-2021-44228 (Log4Shell) 탐지 여부 ==="
+          if jq -e '
+            [.Results[]?.Vulnerabilities[]?
+              | select(.VulnerabilityID == "CVE-2021-44228")
+            ] | length > 0
+          ' a1-scan-results.json > /dev/null; then
+            echo "탐지 성공: CVE-2021-44228이 정상적으로 검출됨"
+          else
+            echo "탐지 실패: CVE-2021-44228이 검출되지 않음"
+          fi
+
+          echo ""
+          echo "=== 네 실제 trivy-scan job과 동일한 fail 기준 재현 ==="
+          jq -r '
+            [.Results[]?.Vulnerabilities[]?
+              | select(.Severity == "CRITICAL" and .FixedVersion != null and .FixedVersion != "")
+            ]
+            | unique_by(.VulnerabilityID)
+            | .[]
+            | "\(.VulnerabilityID)\t\(.PkgName)\t\(.InstalledVersion)\t\(.FixedVersion)\t\(.Severity)"
+          ' a1-scan-results.json | tee a1-unique-cves-critical.tsv
+
+          CRITICAL_COUNT=$(wc -l < a1-unique-cves-critical.tsv | tr -d ' ')
+          echo ""
+          echo "CRITICAL 고유 CVE: $CRITICAL_COUNT 건"
+          echo "→ 실제 trivy-scan job이었다면 이 값이 0보다 크면 Job이 fail 처리됨"
+
+      - name: Upload scenario A-1 report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: scenario-a1-report
+          path: |
+            a1-scan-results.json
+            a1-log4j-cves.tsv
+            a1-unique-cves-critical.tsv
+          retention-days: 7

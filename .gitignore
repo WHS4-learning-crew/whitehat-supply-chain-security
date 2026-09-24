@@ -11,7 +11,18 @@
 access_keys_temp.json
 .DS_Store
 .github/.DS_Store
+
 # SBOM / vulnerability scan outputs
 sbom-*.json
 grype-report*.json
 package-lock-baseline.json
+
+# Trivy scan outputs
+trivy-results.json
+trivy-results*.json
+unique-cves-critical.tsv
+unique-cves-high.tsv
+trivy-scan-results/
+a1-scan-results.json
+a1-unique-cves-critical.tsv
+a1-log4j-cves.tsv
