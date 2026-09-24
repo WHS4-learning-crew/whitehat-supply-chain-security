@@ -1,9 +1,9 @@
 name: Scenario A-1 Test (Log4Shell)
 
-# 기존 ci-pipeline.yml, app/Dockerfile과 완전히 독립된 워크플로
-# 수동 실행(workflow_dispatch)만 지원 - push/PR로 자동 트리거되지 않음
 on:
-  workflow_dispatch:
+  push:
+    branches:
+      - test/a1-trivy-scan
 
 permissions:
   contents: read
