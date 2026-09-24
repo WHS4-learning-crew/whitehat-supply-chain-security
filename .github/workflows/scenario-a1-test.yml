@@ -71,7 +71,15 @@ jobs:
           CRITICAL_COUNT=$(wc -l < a1-unique-cves-critical.tsv | tr -d ' ')
           echo ""
           echo "CRITICAL 고유 CVE: $CRITICAL_COUNT 건"
-          echo "→ 실제 trivy-scan job이었다면 이 값이 0보다 크면 Job이 fail 처리됨"
+          
+          # fail -> 차단
+          if [ "$CRITICAL_COUNT" -gt 0 ]; then
+            echo "::error::CRITICAL 등급 고유 CVE ${CRITICAL_COUNT}건 발견 — 실제 trivy-scan job이었다면 여기서 Job 실패"
+            exit 1
+          else
+            echo "CRITICAL CVE 없음 — 통과"
+          fi
+          
 
       - name: Upload scenario A-1 report
         if: always()
