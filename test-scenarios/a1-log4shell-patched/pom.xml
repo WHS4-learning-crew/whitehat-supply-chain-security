@@ -5,16 +5,18 @@
     <modelVersion>4.0.0</modelVersion>
 
     <groupId>com.whs4</groupId>
-    <artifactId>a1-log4shell-patched-test</artifactId>
+    <artifactId>a1-log4shell-patched-pure-test</artifactId>
     <version>1.0.0</version>
     <packaging>jar</packaging>
 
     <parent>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-starter-parent</artifactId>
-        <!-- 2.5.6(취약, 2.14.1) 대신 2.6.3(패치, 2.17.1) 사용 -->
-        <!-- 이것도 pom.xml 어디에도 log4j 버전을 직접 선언하지 않음 (대조군) -->
-        <version>2.6.3</version>
+        <!-- 2.6.3(패치는 됐지만 spring-web/tomcat이 낡음) 대신
+             2.7.18(2.7.x 라인의 마지막 버전, 최신 spring-web/tomcat 포함)로 교체.
+             log4j2도 여전히 패치 버전을 물고 있으면서, 다른 컴포넌트의
+             CVE 노이즈를 최소화하여 "log4j 패치 여부"만 순수하게 비교하기 위함 -->
+        <version>2.7.18</version>
     </parent>
 
     <properties>
@@ -33,7 +35,7 @@
             </exclusions>
         </dependency>
 
-        <!-- spring-boot-starter-parent 2.6.3 기준으로 log4j-core:2.17.1이 자동으로 딸려옴 -->
+        <!-- spring-boot-starter-parent 2.7.18 기준으로 최신 log4j-core(2.17.2 이상)가 자동으로 딸려옴 -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-log4j2</artifactId>
