@@ -68,6 +68,10 @@ spec:
               mountPath: /var/cache/nginx
             - name: tmp
               mountPath: /tmp
+            - name: run
+              mountPath: /run    # nginx.pid가 여기 쓰여짐 (CrashLoopBackOff 원인)
+            - name: conf-d
+              mountPath: /etc/nginx/conf.d    # entrypoint 스크립트가 여기 수정 시도함 (경고용, 필수는 아니지만 깔끔하게)
           resources:
             requests:
               cpu: "50m"
@@ -79,6 +83,10 @@ spec:
         - name: cache
           emptyDir: {}
         - name: tmp
+          emptyDir: {}
+        - name: run
+          emptyDir: {}
+        - name: conf-d
           emptyDir: {}
 ---
 apiVersion: v1
