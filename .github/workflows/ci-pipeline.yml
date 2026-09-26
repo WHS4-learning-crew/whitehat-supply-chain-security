@@ -214,27 +214,27 @@ jobs:
           cache-dir: /home/runner/.cache/trivy  # DB 캐시
           trivyignores: app/.trivyignore        # Waiver 검증
 
-      - name: Post-process (unique CVE + Fixed Version 재집계)
+      - name: Post-process (unique CVE + Fixed Version 재집계)  # 기존 will not fix 통과 로지기 수정
         run: |
           echo "=== CRITICAL (fail 대상) ==="
           jq -r '
             [.Results[]?.Vulnerabilities[]?
-              | select(.Severity == "CRITICAL" and .FixedVersion != null and .FixedVersion != "")
+              | select(.Severity == "CRITICAL")
             ]
             | unique_by(.VulnerabilityID)
             | .[]
-            | "\(.VulnerabilityID)\t\(.PkgName)\t\(.InstalledVersion)\t\(.FixedVersion)\t\(.Severity)"
+            | "\(.VulnerabilityID)\t\(.PkgName)\t\(.InstalledVersion)\t\(.FixedVersion // "없음")\t\(.Severity)"
           ' trivy-results.json | tee unique-cves-critical.tsv
 
           echo ""
           echo "=== HIGH (리포트만, fail 안 함) ==="
           jq -r '
             [.Results[]?.Vulnerabilities[]?
-              | select(.Severity == "HIGH" and .FixedVersion != null and .FixedVersion != "")
+              | select(.Severity == "HIGH")
             ]
             | unique_by(.VulnerabilityID)
             | .[]
-            | "\(.VulnerabilityID)\t\(.PkgName)\t\(.InstalledVersion)\t\(.FixedVersion)\t\(.Severity)"
+            | "\(.VulnerabilityID)\t\(.PkgName)\t\(.InstalledVersion)\t\(.FixedVersion // "없음")\t\(.Severity)"
           ' trivy-results.json | tee unique-cves-high.tsv
 
           CRITICAL_COUNT=$(wc -l < unique-cves-critical.tsv | tr -d ' ')
@@ -249,10 +249,10 @@ jobs:
           fi
 
           if [ "$CRITICAL_COUNT" -gt 0 ]; then
-            echo "::error::CRITICAL 등급 + 패치 가능한 고유 CVE ${CRITICAL_COUNT}건 발견 — Job 실패"
+            echo "::error::CRITICAL 등급 고유 CVE ${CRITICAL_COUNT}건 발견 — Job 실패"
             exit 1
           else
-            echo "패치 가능한 CRITICAL CVE 없음 — 통과"
+            echo "CRITICAL CVE 없음 — 통과"
           fi
 
       - name: Upload Trivy report
