@@ -2,7 +2,7 @@ name: CI Security Pipeline
 
 on:
   push:
-    branches: [main, feat/ci-pipeline]   
+    branches: [main, feat/ci-pipeline, test/waiver-verify]   
   pull_request:
     branches: [main]                     
   workflow_dispatch:                     
