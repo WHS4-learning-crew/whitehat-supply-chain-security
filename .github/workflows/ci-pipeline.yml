@@ -205,12 +205,12 @@ jobs:
       - name: Trivy scan (JSON output)
         uses: aquasecurity/trivy-action@master
         with:
-          image-ref: whitehat-demo:latest
+          image-ref: debian:8              # whitehat-demo:latest → debian:8
           format: json
           output: trivy-results.json
           exit-code: '0'        # 실패 판단은 후처리 step에서 함
           severity: 'CRITICAL,HIGH'
-          ignore-unfixed: true
+          ignore-unfixed: false            # true → false
           cache-dir: /home/runner/.cache/trivy  # DB 캐시
           trivyignores: app/.trivyignore        # Waiver 검증
 
