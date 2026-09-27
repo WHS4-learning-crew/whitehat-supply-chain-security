@@ -8,7 +8,7 @@ resource "aws_s3_bucket_public_access_block" "a3_manifest" {
   bucket                  = aws_s3_bucket.a3_manifest.id
   block_public_acls       = true
   ignore_public_acls      = true
-  block_public_policy     = false
+  block_public_policy     = true
   restrict_public_buckets = true
 }
 
