@@ -1,0 +1,47 @@
+name: Scenario A-3 IaC Gate Test
+
+on:
+  push:
+    branches:
+      - test/a3-iac-block
+
+permissions:
+  contents: read
+
+jobs:
+  iac-scan:
+    name: Checkov + tfsec
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Checkov
+        run: pip install checkov
+
+      - name: Checkov - Dockerfile
+        run: |
+          checkov -d . \
+            --framework dockerfile \
+            --compact \
+            --quiet
+
+      - name: Checkov - Kubernetes
+        run: |
+          checkov -d . \
+            --framework kubernetes \
+            --compact \
+            --quiet
+
+      - name: Checkov - GitHub Actions
+        run: |
+          checkov -d . \
+            --framework github_actions \
+            --compact \
+            --quiet
+
+      - name: tfsec - Terraform
+        uses: aquasecurity/tfsec-action@v1.0.3
+        with:
+          working_directory: infra-rbac/
+          additional_args: --minimum-severity HIGH
