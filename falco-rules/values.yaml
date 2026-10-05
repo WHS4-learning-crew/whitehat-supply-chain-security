@@ -90,7 +90,11 @@ customRules:
     - rule: Outbound Connection From Dormant Beacon Pod
       desc: C-3 scenario - outbound connection from c3-dormant-beacon pod
       condition: >
-        outbound and container and
+        evt.type = connect and
+        (fd.typechar = 4 or fd.typechar = 6) and
+        fd.ip != "0.0.0.0" and fd.net != "127.0.0.0/8" and
+        (evt.rawres >= 0 or evt.res = EINPROGRESS) and
+        container and
         k8s.ns.name="ns-kimseoyeon" and
         k8s.pod.label[scenario]="c3-dormant-outbound"
       output: >
