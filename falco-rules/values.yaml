@@ -1,0 +1,156 @@
+﻿driver:
+  kind: modern_ebpf
+tty: true
+falcosidekick:
+  enabled: true
+  webui:
+    enabled: true
+    user: "admin:admin"
+  config:
+    discord:
+      webhookurl: ""
+      minimumpriority: "warning"
+resources:
+  requests:
+    cpu: 100m
+    memory: 512Mi
+  limits:
+    cpu: 500m
+    memory: 1Gi
+
+customRules:
+  rules-teamtnt.yaml: |-
+    - macro: known_drop_and_execute_activities
+      condition: (proc.name in (xmrig, nmap, masscan))
+
+    - rule: Suspicious Cryptomining Activity Detected
+      desc: Detect TeamTNT/Hildegard-style resource hijacking
+      condition: >
+        spawned_process and container and
+        (proc.name in (xmrig, kinsing, xmr-stak, minerd) or
+         fd.sport in (3333, 4444, 5555, 7777, 14444, 14433))
+      output: >
+        Cryptomining activity detected (user=%user.name command=%proc.cmdline
+        container=%container.name image=%container.image.repository)
+      priority: CRITICAL
+
+    - rule: Network Scanning Tool Launched
+      desc: Detect scanning tool execution (Hildegard spreading stage)
+      condition: >
+        spawned_process and container and
+        proc.name in (masscan, nmap, zmap, zgrab)
+      output: >
+        Network scanning tool launched (user=%user.name command=%proc.cmdline
+        container=%container.name image=%container.image.repository)
+      priority: WARNING
+
+    - rule: Log or History Tampering
+      desc: Detect log file deletion and shell history clearing (TeamTNT anti-forensics pattern)
+      condition: >
+        (spawned_process and container and
+         proc.name in (rm, shred, truncate) and
+         (fd.name startswith /var/log or proc.cmdline contains ".bash_history"))
+        or
+        (spawned_process and container and proc.cmdline contains "history -c")
+      output: >
+        Log or history tampering detected (user=%user.name command=%proc.cmdline
+        container=%container.name image=%container.image.repository)
+      priority: WARNING
+
+    - rule: Suspicious User Account Creation
+      desc: Detect account creation attempts inside container (backdoor account pattern)
+      condition: >
+        spawned_process and container and
+        proc.name in (useradd, adduser, usermod)
+      output: >
+        Suspicious user account creation detected (user=%user.name command=%proc.cmdline
+        container=%container.name image=%container.image.repository)
+      priority: CRITICAL
+
+    - rule: Kernel Module Load Attempt
+      desc: Detect kernel module load attempts inside container (Diamorphine-style rootkit pattern)
+      condition: >
+        evt.type in (init_module, finit_module) and container
+      output: >
+        Kernel module load attempt detected (user=%user.name command=%proc.cmdline
+        container=%container.name image=%container.image.repository)
+      priority: CRITICAL
+
+  rules-exceptions.yaml: |-
+    - rule: Contact K8S API Server From Container
+      condition: and not k8s.ns.name="kyverno"
+      override:
+        condition: append
+    - rule: Drop and execute new binary in container
+      condition: and not proc.name in (containerd, containerd-shim, runc)
+      override:
+        condition: append
+
+  c3-dormant-outbound.yaml: |-
+    - rule: Outbound Connection From Dormant Beacon Pod
+      desc: C-3 scenario - outbound connection from c3-dormant-beacon pod
+      condition: >
+        evt.type = connect and
+        (fd.typechar = 4 or fd.typechar = 6) and
+        fd.ip != "0.0.0.0" and fd.net != "127.0.0.0/8" and
+        (evt.rawres >= 0 or evt.res = EINPROGRESS) and
+        container and
+        k8s.ns.name="ns-kimseoyeon" and
+        k8s.pod.label[scenario]="c3-dormant-outbound"
+      output: >
+        Outbound connection detected (pod=%k8s.pod.name ns=%k8s.ns.name
+        dest=%fd.rip:%fd.rport time=%evt.time)
+      priority: NOTICE
+
+  c4-credential-exfil.yaml: |-
+    - macro: whs4_secret_path_in_args
+      condition: >
+        (proc.args contains "/etc/secrets" or
+         proc.args contains "/var/run/secrets" or
+         proc.args contains "/proc/self/environ" or
+         proc.args contains "/proc/1/environ")
+
+    - list: whs4_network_transfer_tools
+      items: [curl, wget, nc, ncat, socat, python, python3]
+
+    - list: whs4_memdump_tools
+      items: [gcore, gdb, strace, ltrace]
+
+    - rule: WHS4 Secret File Sent To Network
+      desc: Detect secret path passed as argument to network transfer tool
+      condition: >
+        spawned_process and container and
+        proc.name in (whs4_network_transfer_tools) and
+        whs4_secret_path_in_args
+      output: >
+        [C-4] Secret file sent to network
+        (ns=%k8s.ns.name pod=%k8s.pod.name container=%container.name
+         user=%user.name command=%proc.cmdline parent=%proc.pname)
+      priority: CRITICAL
+      tags: [whs4, scenario_c4, secrets, exfiltration, T1552]
+
+    - rule: WHS4 Read Other Process Environment
+      desc: Detect reading another process environ file
+      condition: >
+        open_read and container and
+        fd.name glob "/proc/*/environ" and
+        not fd.name = "/proc/self/environ" and
+        not (fd.name = "/proc/1/environ" and proc.pid = 1)
+      output: >
+        [C-4] Read other process environment
+        (ns=%k8s.ns.name pod=%k8s.pod.name container=%container.name
+         user=%user.name file=%fd.name command=%proc.cmdline)
+      priority: WARNING
+      tags: [whs4, scenario_c4, secrets, credential_access, T1003.007]
+
+    - rule: WHS4 Memory Dump Tool In Container
+      desc: Detect memory dump or debugging tool execution
+      condition: >
+        spawned_process and container and
+        proc.name in (whs4_memdump_tools)
+      output: >
+        [C-4] Memory dump or debugging tool executed
+        (ns=%k8s.ns.name pod=%k8s.pod.name container=%container.name
+         user=%user.name command=%proc.cmdline)
+      priority: CRITICAL
+      tags: [whs4, scenario_c4, secrets, credential_access, T1003.007]
