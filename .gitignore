@@ -16,3 +16,7 @@ sbom-*.json
 grype-report*.json
 package-lock-baseline.json
 artifacts/
+*-policy.json
+secrets-test-pod.yaml
+test-policy.yaml
+node_modules/
