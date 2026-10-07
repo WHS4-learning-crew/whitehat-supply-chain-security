@@ -41,6 +41,7 @@ echo ""
 # 2. ClusterPolicy 적용 (disallow-root-user, restrict-image-registries)
 echo "[2/5] ClusterPolicy 적용 중..."
 kubectl apply -f "$POLICIES_DIR/disallow-root-user.yaml"
+kubectl apply -f "$POLICIES_DIR/disallow-latest-tag.yaml"
 kubectl apply -f "$POLICIES_DIR/restrict-image-registries.yaml"
 echo ""
 
@@ -57,7 +58,7 @@ for i in $(seq 1 6); do
 done
 
 kubectl get imagevalidatingpolicy verify-image-signature
-kubectl get clusterpolicy disallow-root-user restrict-image-registries
+kubectl get clusterpolicy disallow-root-user disallow-latest-tag restrict-image-registries
 echo ""
 
 # 4. Falco 예외 처리 적용
