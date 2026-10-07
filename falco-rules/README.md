@@ -20,3 +20,4 @@ export DISCORD_WEBHOOK_URL="<본인의 Discord Webhook URL>"
 
 - Discord 웹훅 URL을 `helm --set`으로 주입하면 `falco` 네임스페이스의 Helm 릴리스 Secret(`sh.helm.release.v1.falco.*`)에 값이 남습니다. 릴리스 이력(리비전)에도 남으므로 해당 네임스페이스의 Secret 조회 권한을 제한해야 하며, 노출이 의심되면 웹훅을 재발급합니다.
 - C-3 룰은 priority가 NOTICE라 Discord(`minimumpriority: warning`)로는 전송되지 않고 Falco 로그에서 확인합니다. 연결 1건당 이벤트가 여러 건(DNS 조회, 대상 포트 연결) 기록되므로, Discord로 받으려면 WARNING으로 올리되 알림이 중복될 수 있습니다.
+- 스크립트의 `--create-namespace`로 네임스페이스가 없는 상태에서 최초 설치하는 경로는 검증하지 않았습니다.
