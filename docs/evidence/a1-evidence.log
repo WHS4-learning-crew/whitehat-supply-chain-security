@@ -1,0 +1,46 @@
+# A-1 Log4Shell 증거 로그 (Actions 로그 발췌)
+# workflow: Scenario A-1 Test (Log4Shell) / run #8 / branch: test/a1-trivy-block / commit: 36091af
+# 실행일: 2026-09-24 / 취약 Job 1m 25s (실패=차단), 대조군 Job 2m 19s (통과)
+# 발췌 범위: 판정 step 출력 (CVE 목록, 건수, 종료 코드). 빌드 로그는 제외
+
+##### [취약 버전 2.14.1] Log4Shell 차단 검증 #####
+2026-09-24T13:03:02.8902585Z === Log4j 관련 CVE 전체 ===
+2026-09-24T13:03:02.9048425Z CVE-2021-44228	org.apache.logging.log4j:log4j-core	2.14.1	2.15.0, 2.3.1, 2.12.2	CRITICAL
+2026-09-24T13:03:02.9054916Z CVE-2021-45046	org.apache.logging.log4j:log4j-core	2.14.1	2.16.0, 2.12.2	CRITICAL
+2026-09-24T13:03:02.9056175Z CVE-2021-45105	org.apache.logging.log4j:log4j-core	2.14.1	2.12.3, 2.17.0, 2.3.1	HIGH
+2026-09-24T13:03:02.9094594Z 
+2026-09-24T13:03:02.9123998Z === (참고) 전체 CRITICAL 목록 - log4j 외 포함 ===
+2026-09-24T13:03:02.9272966Z CVE-2016-1000027	org.springframework:spring-web	5.3.12	6.0.0	CRITICAL
+2026-09-24T13:03:02.9282688Z CVE-2021-44228	org.apache.logging.log4j:log4j-core	2.14.1	2.15.0, 2.3.1, 2.12.2	CRITICAL
+2026-09-24T13:03:02.9283980Z CVE-2021-45046	org.apache.logging.log4j:log4j-core	2.14.1	2.16.0, 2.12.2	CRITICAL
+2026-09-24T13:03:02.9285132Z CVE-2022-22965	org.springframework:spring-beans	5.3.12	5.2.20.RELEASE, 5.3.18	CRITICAL
+2026-09-24T13:03:02.9286288Z CVE-2023-20860	org.springframework:spring-webmvc	5.3.12	6.0.7, 5.3.26	CRITICAL
+2026-09-24T13:03:02.9287614Z CVE-2025-24813	org.apache.tomcat.embed:tomcat-embed-core	9.0.54	11.0.3, 10.1.35, 9.0.99	CRITICAL
+2026-09-24T13:03:02.9289068Z CVE-2026-41293	org.apache.tomcat.embed:tomcat-embed-core	9.0.54	9.0.118, 10.1.55, 11.0.22	CRITICAL
+2026-09-24T13:03:02.9290423Z CVE-2026-43512	org.apache.tomcat.embed:tomcat-embed-core	9.0.54	9.0.118, 10.1.55, 11.0.22	CRITICAL
+2026-09-24T13:03:02.9292485Z CVE-2026-43515	org.apache.tomcat.embed:tomcat-embed-core	9.0.54	9.0.118, 10.1.55, 11.0.22	CRITICAL
+2026-09-24T13:03:02.9293931Z CVE-2026-65182	org.apache.tomcat.embed:tomcat-embed-core	9.0.54	11.0.25, 10.1.58, 9.0.121	CRITICAL
+2026-09-24T13:03:02.9295326Z CVE-2026-65905	org.apache.tomcat.embed:tomcat-embed-core	9.0.54	11.0.25, 10.1.58, 9.0.121	CRITICAL
+2026-09-24T13:03:02.9296653Z CVE-2026-68525	org.apache.tomcat.embed:tomcat-embed-core	9.0.54	11.0.25, 10.1.58, 9.0.121	CRITICAL
+2026-09-24T13:03:02.9297532Z 
+2026-09-24T13:03:02.9298128Z Log4j 관련 CVE: 3 건 (차단 여부 판정 기준)
+2026-09-24T13:03:02.9315989Z 전체 CRITICAL: 12 건 (참고용, log4j 외 별개 이슈 가능)
+2026-09-24T13:03:02.9356039Z ##[error]Log4j 관련 CVE 3건 발견 — Job 실패 (기대된 결과: 차단됨)
+2026-09-24T13:03:02.9366867Z ##[error]Process completed with exit code 1.
+
+##### [패치 버전] Log4Shell 대조군 검증 #####
+2026-09-24T13:03:39.2688351Z === Log4j 관련 CVE 전체 (패치 버전) ===
+2026-09-24T13:03:39.2769670Z 
+2026-09-24T13:03:39.2770370Z === (참고) 전체 CRITICAL 목록 - log4j 외 포함 ===
+2026-09-24T13:03:39.2827307Z CVE-2016-1000027	org.springframework:spring-web	5.3.31	6.0.0	CRITICAL
+2026-09-24T13:03:39.2829832Z CVE-2025-24813	org.apache.tomcat.embed:tomcat-embed-core	9.0.83	11.0.3, 10.1.35, 9.0.99	CRITICAL
+2026-09-24T13:03:39.2831541Z CVE-2026-41293	org.apache.tomcat.embed:tomcat-embed-core	9.0.83	9.0.118, 10.1.55, 11.0.22	CRITICAL
+2026-09-24T13:03:39.2832414Z CVE-2026-43512	org.apache.tomcat.embed:tomcat-embed-core	9.0.83	9.0.118, 10.1.55, 11.0.22	CRITICAL
+2026-09-24T13:03:39.2833227Z CVE-2026-43515	org.apache.tomcat.embed:tomcat-embed-core	9.0.83	9.0.118, 10.1.55, 11.0.22	CRITICAL
+2026-09-24T13:03:39.2834017Z CVE-2026-65182	org.apache.tomcat.embed:tomcat-embed-core	9.0.83	11.0.25, 10.1.58, 9.0.121	CRITICAL
+2026-09-24T13:03:39.2834797Z CVE-2026-65905	org.apache.tomcat.embed:tomcat-embed-core	9.0.83	11.0.25, 10.1.58, 9.0.121	CRITICAL
+2026-09-24T13:03:39.2835572Z CVE-2026-68525	org.apache.tomcat.embed:tomcat-embed-core	9.0.83	11.0.25, 10.1.58, 9.0.121	CRITICAL
+2026-09-24T13:03:39.2836114Z 
+2026-09-24T13:03:39.2836456Z Log4j 관련 CVE: 0 건 (패치 여부 판정 기준)
+2026-09-24T13:03:39.2850373Z 전체 CRITICAL: 8 건 (참고용, log4j 외 별개 이슈 가능)
+2026-09-24T13:03:39.2850779Z Log4j 관련 CVE 없음 — 패치 확인됨 (목표 달성)
