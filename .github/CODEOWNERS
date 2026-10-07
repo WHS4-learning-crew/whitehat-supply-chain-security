@@ -1,0 +1,4 @@
+/app/.trivyignore @tronve
+/.gitleaks.toml @tronve
+/policies/ @tronve
+/.github/ @tronve

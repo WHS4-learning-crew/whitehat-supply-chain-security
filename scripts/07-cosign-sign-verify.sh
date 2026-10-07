@@ -8,12 +8,15 @@
 #   3) Rekor 투명성 로그 조회 (검증 결과에 들어 있는 logIndex 사용)
 # 를 한 번에 재현 가능하게 수행한다.
 #
+# 사전 도구: cosign, crane, aws (AWS CLI), rekor-cli, jq
+#   설치: brew install cosign crane rekor-cli jq awscli
 # 사용법:
 #   ./07-cosign-sign-verify.sh <image-ref> [--sign] [--branch <브랜치[,브랜치...]>]
+# (주의(zsh): --branch 값은 변수에 담지 말고 명령줄에 직접 입력하세요.)
 #
 # 예시:
 #   # main 기준 검증 (기본값)
-#   ./07-cosign-sign-verify.sh 984675940604.dkr.ecr.ap-northeast-2.amazonaws.com/whs4-demo-app:<태그>
+#   ./07-cosign-sign-verify.sh <AWS_ACCOUNT_ID>.dkr.ecr.ap-northeast-2.amazonaws.com/whs4-demo-app:<태그>
 #
 #   # feat/ci-pipeline 기준 검증
 #   ./07-cosign-sign-verify.sh <image-ref> --branch feat/ci-pipeline
