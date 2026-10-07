@@ -24,6 +24,8 @@ set -euo pipefail
 
 NAMESPACE="falco"
 RELEASE_NAME="falco"
+# 차트 버전 고정 (업그레이드할 때마다 최신 차트가 설치되지 않도록)
+CHART_VERSION="9.2.0"
 VALUES_FILE="$(dirname "$0")/../falco-rules/values.yaml"
 
 echo "=== [1/5] 사전 조건 확인 ==="
@@ -50,8 +52,8 @@ if [ ! -f "$VALUES_FILE" ]; then
   exit 1
 fi
 
-if ! kubectl cluster-info &> /dev/null; then
-  echo "에러: kubectl이 클러스터에 연결되지 않습니다. kubeconfig를 확인하세요."
+if ! kubectl get pods -n "$NAMESPACE" > /dev/null; then
+  echo "에러: $NAMESPACE 네임스페이스를 조회할 수 없습니다. kubeconfig와 권한(Forbidden 여부)을 확인하세요."
   exit 1
 fi
 
@@ -71,6 +73,7 @@ echo "(Discord Webhook URL은 로그에 노출되지 않도록 --set으로만 �
 helm upgrade --install "$RELEASE_NAME" falcosecurity/falco \
   -n "$NAMESPACE" --create-namespace \
   -f "$VALUES_FILE" \
+  --version "$CHART_VERSION" \
   --set falcosidekick.config.discord.webhookurl="$DISCORD_WEBHOOK_URL" \
   --set falcosidekick.config.discord.minimumpriority="warning"
 
