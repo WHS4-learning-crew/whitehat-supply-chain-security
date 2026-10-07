@@ -3,7 +3,7 @@ kind: ClusterPolicy
 metadata:
   name: restrict-image-registries
 spec:
-  validationFailureAction: Audit        # 먼저 기록만, 9/24 이후 Enforce 전환 여부 결정
+  validationFailureAction: Enforce       # 9/26 B세션에서 Enforce 전환, 10/7 원본 반영
   background: true
   rules:
     - name: allow-ecr-only
