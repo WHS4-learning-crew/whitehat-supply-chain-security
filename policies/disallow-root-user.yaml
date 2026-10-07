@@ -1,0 +1,23 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: disallow-root-user
+spec:
+  validationFailureAction: Enforce
+  rules:
+    - name: check-runAsNonRoot
+      match:
+        any:
+        - resources:
+            kinds:
+            - Pod
+      validate:
+        message: "root(UID 0)로 컨테이너를 실행할 수 없습니다."
+        anyPattern:
+        - spec:
+            securityContext:
+              runAsNonRoot: true
+        - spec:
+            containers:
+            - securityContext:
+                runAsNonRoot: true

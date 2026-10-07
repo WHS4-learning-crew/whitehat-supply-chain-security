@@ -1,0 +1,37 @@
+apiVersion: policies.kyverno.io/v1
+kind: ImageValidatingPolicy
+metadata:
+  name: verify-image-signature
+spec:
+  webhookConfiguration:
+    timeoutSeconds: 30
+  validationActions:
+  - Deny
+  matchConstraints:
+    resourceRules:
+    - apiGroups: [""]
+      apiVersions: ["v1"]
+      operations: ["CREATE", "UPDATE"]
+      resources: ["pods"]
+  matchImageReferences:
+  - glob: "984675940604.dkr.ecr.ap-northeast-2.amazonaws.com/*"
+  attestors:
+  - name: cosign
+    cosign:
+      keyless:
+        identities:
+        - subject: "https://github.com/WHS4-learning-crew/whitehat-supply-chain-security/.github/workflows/ci-pipeline.yml@refs/heads/feat/ci-pipeline"
+          issuer: "https://token.actions.githubusercontent.com"
+        - subject: "https://github.com/WHS4-learning-crew/whitehat-supply-chain-security/.github/workflows/ci-pipeline.yml@refs/heads/main"
+          issuer: "https://token.actions.githubusercontent.com"
+      ctlog:
+        url: "https://rekor.sigstore.dev"
+        insecureIgnoreSCT: true
+  validationConfigurations:
+    required: true
+    mutateDigest: false
+    verifyDigest: false
+  validations:
+  - expression: >-
+      images.containers.map(image, verifyImageSignatures(image, [attestors.cosign])).all(e, e > 0)
+    message: "서명되지 않은 이미지는 배포할 수 없습니다"
