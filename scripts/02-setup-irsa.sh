@@ -5,6 +5,13 @@
 #   ① OIDC 공급자 연결   ② IAM Policy   ③ IAM Role + 신뢰 정책
 #   ④ 서비스어카운트 연결   ⑤ 파드에서 실제 조회로 검증
 #
+# 사전 도구: aws, kubectl, eksctl
+#   설치: brew install awscli kubectl eksctl
+#
+# 주의(5단계 검증 파드): 허용 레지스트리 정책(restrict-image-registries)이 적용된 ns-* 네임스페이스에서는
+#   기본 이미지(amazon/aws-cli, Docker Hub)가 거부된다. 그 경우 VERIFY=false로 5단계를 건너뛰거나,
+#   정책 적용 범위(ns-*) 밖의 네임스페이스를 사용한다(클러스터 관리자 권한 필요).
+#
 # 사용 예:
 #   NAMESPACE=ns-kwonminchan SECRET_NAME=whitehat/test-secret ./scripts/02-setup-irsa.sh
 #
@@ -43,12 +50,17 @@ ISSUER="$(aws eks describe-cluster --name "$CLUSTER_NAME" --region "$REGION" \
   --query "cluster.identity.oidc.issuer" --output text)"
 OIDC_HOST="${ISSUER#https://}"
 OIDC_ARN="arn:aws:iam::${ACCOUNT_ID}:oidc-provider/${OIDC_HOST}"
-if aws iam get-open-id-connect-provider --open-id-connect-provider-arn "$OIDC_ARN" >/dev/null 2>&1; then
+if OIDC_OUT="$(aws iam get-open-id-connect-provider --open-id-connect-provider-arn "$OIDC_ARN" 2>&1)"; then
   ok "이미 연결됨 (${OIDC_HOST##*/})"
-else
+elif grep -q "NoSuchEntity" <<<"$OIDC_OUT"; then
+  # 공급자가 없는 경우에만 새로 만든다
   eksctl utils associate-iam-oidc-provider \
     --cluster "$CLUSTER_NAME" --region "$REGION" --approve >/dev/null
   ok "새로 연결함 (${OIDC_HOST##*/})"
+else
+  # 권한·자격증명·네트워크 오류는 "없음"과 구분해서 멈춘다 (오류 코드만 표시, ARN은 출력하지 않음)
+  OIDC_ERR="$(sed -n 's/.*An error occurred (\([A-Za-z]*\)).*/\1/p' <<<"$OIDC_OUT" | head -n1)"
+  fail "OIDC 공급자 조회에 실패했습니다 (오류 코드: ${OIDC_ERR:-알 수 없음}). 권한(iam:GetOpenIDConnectProvider), 자격증명, 네트워크를 확인하세요"
 fi
 
 log "2/5" "IAM Policy"
@@ -131,7 +143,7 @@ log "5/5" "파드에서 조회 검증"
 POD="irsa-verify-$(date +%s)"
 cleanup_pod() { kubectl delete pod "$POD" -n "$NAMESPACE" --ignore-not-found --wait=false >/dev/null 2>&1 || true; }
 trap 'cleanup_pod; rm -rf "$TMPDIR_IRSA"' EXIT
-kubectl apply -f - >/dev/null <<EOF
+kubectl apply -f - >/dev/null <<EOF || fail "검증 파드 생성이 거부되었습니다. 허용 레지스트리 정책(restrict-image-registries)이 적용된 ns-* 네임스페이스에서는 기본 이미지(Docker Hub)가 막힙니다. VERIFY=false로 건너뛰거나 정책 범위(ns-*) 밖 네임스페이스를 사용하세요"
 apiVersion: v1
 kind: Pod
 metadata:
