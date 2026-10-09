@@ -8,6 +8,10 @@
 # 사전 도구: aws, kubectl, eksctl
 #   설치: brew install awscli kubectl eksctl
 #
+# 주의(5단계 검증 파드): 허용 레지스트리 정책(restrict-image-registries)이 적용된 ns-* 네임스페이스에서는
+#   기본 이미지(amazon/aws-cli, Docker Hub)가 거부된다. 그 경우 VERIFY=false로 5단계를 건너뛰거나,
+#   정책 적용 범위(ns-*) 밖의 네임스페이스를 사용한다(클러스터 관리자 권한 필요).
+#
 # 사용 예:
 #   NAMESPACE=ns-kwonminchan SECRET_NAME=whitehat/test-secret ./scripts/02-setup-irsa.sh
 #
@@ -139,7 +143,7 @@ log "5/5" "파드에서 조회 검증"
 POD="irsa-verify-$(date +%s)"
 cleanup_pod() { kubectl delete pod "$POD" -n "$NAMESPACE" --ignore-not-found --wait=false >/dev/null 2>&1 || true; }
 trap 'cleanup_pod; rm -rf "$TMPDIR_IRSA"' EXIT
-kubectl apply -f - >/dev/null <<EOF
+kubectl apply -f - >/dev/null <<EOF || fail "검증 파드 생성이 거부되었습니다. 허용 레지스트리 정책(restrict-image-registries)이 적용된 ns-* 네임스페이스에서는 기본 이미지(Docker Hub)가 막힙니다. VERIFY=false로 건너뛰거나 정책 범위(ns-*) 밖 네임스페이스를 사용하세요"
 apiVersion: v1
 kind: Pod
 metadata:
