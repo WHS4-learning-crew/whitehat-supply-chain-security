@@ -2,23 +2,33 @@
 # ============================================
 # run-trivy-scan.sh
 #
-#
 # GitHub Actions 없이도 동작하도록, actions/cache 등
 # GitHub 전용 기능은 제외하고 Trivy 자체 캐싱 + 순수 bash로 구성
 #
 # 사전 준비:
-# - trivy 설치
-# - jq 설치
+#   - Docker 설치 및 실행 중 (docker info 가 성공해야 함)
+#   - trivy 설치 (버전 고정, 아래 TRIVY_VERSION 과 같은 버전)
+#       curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin <TRIVY_VERSION>
+#   - jq 설치 (Ubuntu/WSL: sudo apt install -y jq)
+#   - 실행 권한: 저장소에 실행 권한(100755)으로 기록되어 있음
+#       권한 오류가 나면: chmod +x scripts/run-trivy-scan.sh
+#
+# 실행 위치:
+#   레포 루트에서 실행하는 것을 기준으로 함
+#   (다른 위치에서 실행해도 스크립트가 레포 루트로 자동 이동)
 #
 # 사용법:
 #   ./scripts/run-trivy-scan.sh [이미지명:태그]
+#
+# 기본 이미지(whitehat-demo:latest) 준비 - 레포 루트에서:
+#   docker build -t whitehat-demo:latest -f app/Dockerfile app/
 #
 # 이미지 처리 방식:
 #   - 인자로 넘긴 이미지가 로컬에 이미 있으면 → 바로 스캔
 #   - 로컬에 없으면 → docker pull을 자동으로 시도한 뒤 스캔
 #     (Docker Hub 등 공개 레지스트리에 있는 이미지만 가능.
-#      현재 프로젝트의 whitehat-demo:latest처럼 로컬에서 직접
-#      build해야 하는 이미지는 미리 docker build 해둘 것)
+#      whitehat-demo:latest처럼 로컬에서 직접 build해야 하는
+#      이미지는 위 docker build 명령으로 미리 만들어 둘 것)
 #
 # 예시:
 #   ./scripts/run-trivy-scan.sh                     # 기본값(whitehat-demo:latest) 스캔 - 미리 build 필요
@@ -28,7 +38,11 @@
 
 set -euo pipefail
 
+# ---------- 실행 위치 고정 (레포 루트로 이동) ----------
+cd "$(dirname "$0")/.."
+
 # ---------- 설정값 ----------
+TRIVY_VERSION="v0.71.2"   # 교차 검증 기준 버전 (trivy --version 으로 확인)
 IMAGE="${1:-whitehat-demo:latest}"
 SEVERITY="CRITICAL,HIGH"
 IGNOREFILE="app/.trivyignore"
@@ -39,11 +53,29 @@ HIGH_TSV="${OUTPUT_DIR}/unique-cves-high.tsv"
 
 # ---------- 사전 점검 ----------
 echo "=== 사전 점검 ==="
+echo "실행 위치: $(pwd)"
+
+if ! command -v docker &> /dev/null; then
+  echo "오류: docker가 설치되어 있지 않습니다."
+  exit 1
+fi
+
+if ! docker info &> /dev/null; then
+  echo "오류: Docker 데몬에 연결할 수 없습니다."
+  echo "Docker Desktop(또는 dockerd)을 실행한 뒤 다시 시도하세요."
+  exit 1
+fi
 
 if ! command -v trivy &> /dev/null; then
   echo "오류: trivy가 설치되어 있지 않습니다."
-  echo "설치: curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin"
+  echo "설치: curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin ${TRIVY_VERSION}"
   exit 1
+fi
+
+INSTALLED_TRIVY="v$(trivy --version 2>/dev/null | awk '/^Version:/ {print $2; exit}')"
+if [ "$INSTALLED_TRIVY" != "$TRIVY_VERSION" ]; then
+  echo "경고: 설치된 trivy(${INSTALLED_TRIVY})가 기준 버전(${TRIVY_VERSION})과 다릅니다."
+  echo "      결과가 달라질 수 있으니 위 설치 명령으로 같은 버전을 설치하는 것을 권장합니다."
 fi
 
 if ! command -v jq &> /dev/null; then
@@ -61,8 +93,8 @@ if ! docker image inspect "$IMAGE" &> /dev/null; then
     echo ""
     echo "오류: pull도 실패했습니다."
     echo "  - 이미지 이름/태그가 정확한지 확인하세요"
-    echo "  - 로컬 전용 이미지(whitehat-demo:latest 등)라면"
-    echo "    docker build로 먼저 이미지를 만들어두세요"
+    echo "  - 로컬 전용 이미지(whitehat-demo:latest 등)라면 먼저 빌드하세요:"
+    echo "    docker build -t whitehat-demo:latest -f app/Dockerfile app/"
     exit 1
   fi
 fi
