@@ -1,0 +1,130 @@
+# ============================================
+# PoC: 자산 등급별 Trivy 차단 임계값 분기
+# (poc/asset-risk-tier 브랜치 전용 — main 반영 X, PR 올리지 않음)
+#
+# 같은 이미지를 한 번만 빌드하고, 두 등급으로 나란히 스캔해서
+# 등급에 따라 차단 결과가 달라지는 것을 보여줌
+#   - external (외부 노출): HIGH 이상 차단  → FAIL 예상
+#   - internal (내부 전용): CRITICAL만 차단 → PASS 예상
+#
+# main의 ci-pipeline.yml은 건드리지 않음
+# (ci-pipeline.yml은 main, feat/ci-pipeline push에만 실행되므로 이 브랜치에선 돌지 않음)
+#
+# workflow_dispatch 대신 push 트리거를 쓰는 이유:
+#   workflow_dispatch는 파일이 기본 브랜치(main)에 있어야 Actions 화면에 실행 버튼이 생김
+# ============================================
+
+name: PoC - Asset Tier Threshold
+
+on:
+  push:
+    branches: [poc/asset-risk-tier]
+
+permissions:
+  contents: read          # 이 PoC에는 AWS 자격증명, ECR push, 서명 권한이 전혀 없음
+
+env:
+  TRIVY_VERSION: 0.69.3
+  # 공식 릴리스 trivy_0.69.3_checksums.txt의 Linux-64bit.tar.gz 값
+  TRIVY_SHA256: 1816b632dfe529869c740c0913e36bd1629cb7688bd5634f4a858c1d57c88b75
+  IMAGE: whitehat-demo:poc
+
+jobs:
+  build:
+    name: Build PoC Image (once)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build image from Dockerfile.poc
+        run: docker build -f app/Dockerfile.poc -t "$IMAGE" app/
+
+      - name: Save image
+        run: |
+          docker save "$IMAGE" -o /tmp/poc-image.tar
+          echo "빌드한 이미지 ID: $(docker image inspect --format '{{.Id}}' "$IMAGE")"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: poc-image
+          path: /tmp/poc-image.tar
+          retention-days: 1
+
+  scan:
+    name: Trivy scan (${{ matrix.tier }})
+    runs-on: ubuntu-latest
+    needs: build
+    strategy:
+      fail-fast: false      # external이 실패해도 internal은 끝까지 실행
+      matrix:
+        tier: [external, internal]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: poc-image
+          path: /tmp
+
+      - name: Load image
+        run: docker load -i /tmp/poc-image.tar
+
+      # trivy-action@master 대신 바이너리를 버전·체크섬 고정으로 설치
+      - name: Install Trivy (pinned + checksum)
+        run: |
+          curl -sSL -o trivy.tgz \
+            "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz"
+          echo "${TRIVY_SHA256}  trivy.tgz" | sha256sum -c -
+          tar -xzf trivy.tgz trivy
+          sudo mv trivy /usr/local/bin/
+          trivy --version
+
+      - name: Get today's date
+        id: date
+        run: echo "date=$(date +'%Y-%m-%d')" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Trivy DB
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/trivy
+          key: trivy-db-${{ steps.date.outputs.date }}
+          restore-keys: |
+            trivy-db-
+
+      - name: Scan with tier threshold
+        run: bash scripts/run-tier-scan.sh "${{ matrix.tier }}" "$IMAGE"
+
+      - name: Upload tier result
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tier-result-${{ matrix.tier }}
+          path: tier-scan-results/${{ matrix.tier }}/
+          retention-days: 7
+
+  compare:
+    name: Compare tiers
+    runs-on: ubuntu-latest
+    needs: scan
+    if: always()            # external이 FAIL이어도 비교표는 만들어야 함
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: tier-result-*
+          path: results
+
+      - name: Write comparison table
+        run: |
+          {
+            echo "## 자산 등급별 Trivy 차단 결과 (동일 이미지)"
+            echo ""
+            echo "| 등급 | 차단 기준 | 판정 | 차단 사유 CVE | 스캔 시간 | 이미지 ID |"
+            echo "|---|---|---|---|---|---|"
+            for f in results/tier-result-external/summary.json results/tier-result-internal/summary.json; do
+              [ -f "$f" ] || { echo "| $(basename "$(dirname "$f")") | - | 결과 없음 | - | - | - |"; continue; }
+              jq -r '"| \(.tier) (\(.tier_label)) | \(.block_severities | join(", ")) | \(if .verdict=="FAIL" then "❌ 차단" else "✅ 통과" end) | \(if (.blocking|length)==0 then "없음" else (.blocking | map("\(.id) (\(.severity), \(.pkg) \(.installed))") | join("<br>")) end) | \(.scan_seconds)초 | `\(.image_id[7:19])` |"' "$f"
+            done
+            echo ""
+            echo "- 이미지 ID가 같음 → 같은 이미지를 스캔함"
+            echo "- 스캔 시간이 비슷함 → 임계값 분기는 차단 기준만 바꾸고 스캔 시간은 줄이지 않음"
+          } | tee -a "$GITHUB_STEP_SUMMARY"
