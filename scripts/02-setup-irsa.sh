@@ -8,6 +8,16 @@
 # 사전 도구: aws, kubectl, eksctl
 #   설치: brew install awscli kubectl eksctl
 #
+# 필요 권한: IAM 쓰기 권한이 포함되어 있어 관리자 또는 그에 준하는 권한이 필요하다.
+#   AWS(스크립트가 호출하는 API): eks:DescribeCluster, iam:GetOpenIDConnectProvider,
+#     secretsmanager:DescribeSecret, iam:GetPolicy, iam:CreatePolicy, iam:ListPolicyVersions,
+#     iam:CreatePolicyVersion, iam:DeletePolicyVersion, iam:GetRole, iam:CreateRole,
+#     iam:UpdateAssumeRolePolicy, iam:AttachRolePolicy
+#   OIDC 공급자가 없으면 eksctl이 공급자를 만든다. 그에 필요한 IAM 권한이 추가로 필요하며
+#     정확한 목록은 확인하지 못했다.
+#   Kubernetes: 대상 네임스페이스 접근, 그 안의 서비스어카운트와 파드 생성·조회·삭제
+#   권한이 부족하면 1단계에서 멈춘다(OIDC 조회 실패 시에는 오류 코드를 표시한다).
+#
 # 주의(5단계 검증 파드): 허용 레지스트리 정책(restrict-image-registries)이 적용된 ns-* 네임스페이스에서는
 #   기본 이미지(amazon/aws-cli, Docker Hub)가 거부된다. 그 경우 VERIFY=false로 5단계를 건너뛰거나,
 #   정책 적용 범위(ns-*) 밖의 네임스페이스를 사용한다(클러스터 관리자 권한 필요).
