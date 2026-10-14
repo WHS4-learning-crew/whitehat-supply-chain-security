@@ -16,6 +16,22 @@ export DISCORD_WEBHOOK_URL="<본인의 Discord Webhook URL>"
 
 웹훅 URL은 파일에 넣지 않고 환경변수로만 주입합니다. 저장소에 커밋하지 않습니다.
 
+### 설치 권한 없이 확인하기 (렌더링만)
+
+클러스터 설치 권한이 없는 팀원은 아래처럼 렌더링까지만 확인할 수 있습니다. `helm template`은 클러스터에 접속하지 않으므로 아무것도 적용되지 않습니다.
+
+```bash
+helm repo add falcosecurity https://falcosecurity.github.io/charts
+helm repo update
+helm template falco falcosecurity/falco --version 9.2.0 -n falco \
+  -f falco-rules/values.yaml \
+  --set falcosidekick.config.discord.webhookurl="https://example.invalid/dummy" \
+  > /tmp/falco-rendered.yaml
+```
+
+- 실제 Webhook URL 대신 더미 값을 넣으므로 비밀값이 필요 없습니다.
+- 확인되는 범위는 차트 렌더링(values.yaml 구조)까지입니다. Falco 룰 조건식의 문법 오류는 실제 Falco가 룰을 로드할 때만 드러납니다.
+
 ## 한계
 
 - Discord 웹훅 URL을 `helm --set`으로 주입하면 `falco` 네임스페이스의 Helm 릴리스 Secret(`sh.helm.release.v1.falco.*`)에 값이 남습니다. 릴리스 이력(리비전)에도 남으므로 해당 네임스페이스의 Secret 조회 권한을 제한해야 하며, 노출이 의심되면 웹훅을 재발급합니다.
